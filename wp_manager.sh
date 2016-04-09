@@ -64,19 +64,19 @@ VHOSTLISTEN=${VHOSTLISTEN:-"*:80"}
 # DocumentRoot, so in our case, by default will be in /var/www/.wp-base
 BASEDIR=${BASEDIR:-".wp-base"}
 
-# This is a dummy username
-USERNAME=${USERNAME:-""}
+# This is the mysql username that will be in charge of all the databases
+# created by this script
+DBUSER=${DBUSER:-""}
 
-# This is a dummy password
-PASSWORD=${PASSWORD:-""}
+# The password for the mysql username
+DBPASS=${DBPASS:-""}
 
-# This is a dummy hostname
+# Change this if your mysql database is on a different server than the one
+# where Apache is running
+# WARNING - NEEDS TESTING
 HOST=${HOST:-"localhost"}
 
-# This is a dummy database name
-DB_NAME=${DB_NAME:-"wp"}
-
-# Shall we clean the tmpdir?
+# Shall we clean the tmpdir after every use?
 CLEANUP=${CLEANUP:-"yes"}
 
 } # end set_defaults, do not change this line.
@@ -95,7 +95,7 @@ PIDFILE=/var/tmp/$(basename $0 .sh).pid
 VHOSTLIST=$(grep "# BEGIN WP_MANAGER VHOST" ${VHOSTCONF} | cut -d " " -f 5)
 
 # WordPress svn address
-WORDPRESS=${WORDPRESS=-"https://core.svn.wordpress.org/trunk/"}
+WORDPRESS=${WORDPRESS:-"https://core.svn.wordpress.org/trunk/"}
 
 #------------------------------------------------------------------------------
 #						### create tmd directory ###
@@ -179,8 +179,8 @@ check_setup() {
 		fi
 	fi
 	# check if we have a username and password, or we won't be able to install everything
-	if [[ -z $USERNAME || -z $PASSWORD ]]; then
-		ERRORMSG+="\n\"\$USERNAME\" or \"\$PASSWORD\" are not set. This script won't be able to install new VHosts without those settings."
+	if [[ -z $DBUSER || -z $DBPASS ]]; then
+		ERRORMSG+="\n\"\$DBUSER\" or \"\$DBPASS\" are not set. This script won't be able to install new VHosts without those settings."
 	fi
 	if [[ $ERRORMSG != "" ]]; then
 		echo "we've found some errors in your configuration."
@@ -199,7 +199,38 @@ check_setup() {
 #							### Setup base files ###
 #------------------------------------------------------------------------------
 base_setup() {
-	echo $(dirname ${WEBSERVER})/${BASEDIR}
+	directory=$(dirname ${WEBSERVER})/${BASEDIR}
+	echo -e "installing base files inside '${directory}'"
+	if [ ! -d $directory ]; then
+		echo "creating base directory '${directory}'"
+		mkdir -p $directory
+	else
+		echo -e "${directory} already exists.\n"
+		read -p "do you wish to rebuild it? [y/n] " -n 1 -r; echo
+		if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+			exit $USERABORTED
+		else
+			echo "rebuilding base directory '${directory}'"
+			rm -rf $directory && mkdir $directory
+		fi
+	fi
+	# let's get salty! we'll need those keys in a minute
+	echo "Downloading secret-keys from WordPress.org API"
+	wget -O ${TMPDIR}/wp.keys https://api.wordpress.org/secret-key/1.1/salt/
+	echo "Downloading WordPress from svn"
+	${SVN} co ${WORDPRESS} ${directory}/WP
+	echo "creating base wp-config.php"
+	cp ${directory}/WP/wp-config-sample.php ${TMPDIR}/wp-config.php
+	# substitute username and password with our settings
+	sed -i "s/username_here/${DBUSER}/" ${TMPDIR}/wp-config.php
+	sed -i "s/password_here/${DBPASS}/" ${TMPDIR}/wp-config.php
+	# copy the secret keys into our file
+	sed -i "/#@-/r ${TMPDIR}/wp.keys" ${TMPDIR}/wp-config.php
+	sed -i "/#@+/,/#@-/d" ${TMPDIR}/wp-config.php
+	# activate WP_DEBUG
+	sed -i "s/false)/true)/" ${TMPDIR}/wp-config.php
+	# put the wp-config.php file back in its place
+	cp ${TMPDIR}/wp-config.php ${directory}/wp-config.php
 }
 
 #------------------------------------------------------------------------------
@@ -334,8 +365,8 @@ else
 		echo -e "vhost config file\t = $VHOSTCONF"
 		echo -e "Base Directory\t\t = $BASEDIR"
 		echo -e "tmp Directory\t\t = $TMPDIR"
-		echo -e "Username\t\t = $USERNAME"
-		echo -e "Password\t\t = $PASSWORD"
+		echo -e "Username\t\t = $DBUSER"
+		echo -e "Password\t\t = $DBPASS"
 		echo -e "Host\t\t\t = $HOST"
 		echo -e "database name\t\t = $DB_NAME \n"
 		check_setup
@@ -361,7 +392,9 @@ else
 					update
 					break
 					;;
-				s ) base_setup
+				s ) check_setup
+					mktmp
+					base_setup
 					;;
 				l ) list_vhosts
 					;;
