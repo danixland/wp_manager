@@ -89,12 +89,13 @@ set_defaults
 
 # Here we'll store the temporary files used during this script operation.
 TMPDIR=${TMPDIR:-"/tmp/wp_manager"}.$$
-
 # Let's prevent the script from running more than one instance at a time.
 PIDFILE=/var/tmp/$(basename $0 .sh).pid
-
 # This variable will hold a list of VHosts created by the script
 VHOSTLIST=$(grep "# BEGIN WP_MANAGER VHOST" ${VHOSTCONF} | cut -d " " -f 5)
+
+# WordPress svn address
+WORDPRESS=${WORDPRESS=-"https://core.svn.wordpress.org/trunk/"}
 
 #------------------------------------------------------------------------------
 #						### create tmd directory ###
@@ -198,7 +199,7 @@ check_setup() {
 #							### Setup base files ###
 #------------------------------------------------------------------------------
 base_setup() {
-	echo "Setting up base files"
+	echo $(dirname ${WEBSERVER})/${BASEDIR}
 }
 
 #------------------------------------------------------------------------------
@@ -221,7 +222,7 @@ check_installed() {
 	new_site=$1
 	echo "${VHOSTLIST}" | grep -q "\b${new_site}\b"
 	if [ $? == 0 ]; then
-		echo "${new_site} already exists."
+		echo "${new_site} already exists. Exiting now."
 		rm -rf $TMPDIR
 		rm -f $PIDFILE
 		exit $E_NEWSITEEXISTS
