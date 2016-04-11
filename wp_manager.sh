@@ -51,11 +51,19 @@ SVN=${SVN:-"/usr/bin/svn"}
 # Set this variable to your server's DocumentRoot.
 WEBSERVER=${WEBSERVER:-"/var/www/htdocs"}
 
-# Directory were the Apache config files are stored.
+# The admin email for your server
 SERVERADMIN=${SERVERADMIN:-"admin@some.url"}
 
 # The apache config file
 APACHECONF=${APACHECONF:-"/etc/httpd/httpd.conf"}
+
+# All Files inside the DocumentRoot for the VHosts will be owned
+# by this user/group, so it is advisable to make your usual user
+# part of the $APACHEGROUP to be able to modify files in the VHosts
+# The server user under which the apache executable is running
+APACHEUSER=${APACHEUSER:-"apache"}
+# The server group under which the apache executable is running
+APACHEGROUP=${APACHEGROUP:-"apache"}
 
 # The Virtual Hosts config file.
 # If your distro uses only the main file "httpd.conf" to store the vhosts
@@ -397,12 +405,14 @@ MYSQLSCRIPT
 			sed -i "s/database_name_here/${new_site}/" ${TMPDIR}/wp-config.php
 			cp ${TMPDIR}/wp-config.php ${WEBSERVER}/${new_site}/wp-config.php
 		fi
-		echo -e "${BLUE}Changing owner of ${GREEN}${new_site}${BLUE} to apache:apache ${COLOR_RESET}"
-		chown -R apache:apache ${WEBSERVER}/${new_site}
+		echo -e "${BLUE}Changing owner of ${GREEN}${new_site}${BLUE} to ${APACHEUSER}:${APACHEGROUP} ${COLOR_RESET}"
+		chown -R ${APACHEUSER}:${APACHEGROUP} ${WEBSERVER}/${new_site}
 		echo -e "${GREEN}A new website has been created and is awaiting for you."
 		echo "It's now time to restart your apache webserver and enjoy WordPress at '${new_site}'."
 		echo -e "${YELLOW}Don't forget to update your 'hosts' file on every client that is going to"
-		echo "access this server on your lan.${COLOR_RESET}"
+		echo "access this server on your lan."
+		echo -e "${BLUE}You can use this command to modify the file /etc/hosts on your linux client:"
+		echo -e "${GREEN}echo -e \"\$(hostname -i)\\\t\\\t${new_site}\" >> /etc/hosts${COLOR_RESET}"
 
 	else # I'll have to work on using httpd.conf only
 		echo "using only httpd.conf is not yet working."
@@ -444,21 +454,23 @@ else
 	# Parse the commandline options:
 	if (( $# == 0 )); then
 		if [ ! -r ${SCRIPTCONFIG} ]; then
+			echo -e ${YELLOW}
 			echo "WARNING - NO CONFIGURATION FILE FOUND."
 			echo "It is advisable to create a config file running '$(basename $0) -w'"
 			echo "and edit it to suit your current server configuration or this script"
-			echo -e "won't let you operate. \n"
+			echo -e "won't let you operate.${COLOR_RESET} \n"
 		fi
-		echo -e "CURRENT CONFIGURATION: \n"
-		echo -e "Webserver\t\t = $WEBSERVER"
-		echo -e "Apache config\t\t = $APACHECONF"
-		echo -e "Server Admin\t\t = $SERVERADMIN"
-		echo -e "vhost config file\t = $VHOSTCONF"
-		echo -e "Base Directory\t\t = $BASEDIR"
-		echo -e "tmp Directory\t\t = $TMPDIR"
-		echo -e "Username\t\t = $DBUSER"
-		echo -e "Password\t\t = $DBPASS"
-		echo -e "Host\t\t\t = $HOST \n"
+		echo -e "${GREEN}CURRENT CONFIGURATION:${COLOR_RESET} \n"
+		echo -e "Webserver\t\t = ${GREEN}$WEBSERVER${COLOR_RESET}"
+		echo -e "Apache config\t\t = ${GREEN}$APACHECONF${COLOR_RESET}"
+		echo -e "Apache user:group\t = ${GREEN}${APACHEUSER}:${APACHEGROUP}${COLOR_RESET}"
+		echo -e "Server Admin\t\t = ${GREEN}$SERVERADMIN${COLOR_RESET}"
+		echo -e "vhost config file\t = ${GREEN}$VHOSTCONF${COLOR_RESET}"
+		echo -e "Base Directory\t\t = ${GREEN}$BASEDIR${COLOR_RESET}"
+		echo -e "tmp Directory\t\t = ${GREEN}$TMPDIR${COLOR_RESET}"
+		echo -e "Username\t\t = ${GREEN}$DBUSER${COLOR_RESET}"
+		echo -e "Password\t\t = ${GREEN}$DBPASS${COLOR_RESET}"
+		echo -e "Host\t\t\t = ${GREEN}$HOST${COLOR_RESET} \n"
 		check_setup
 		rm -f $PIDFILE; exit $STATUSDISPLAY
 	else
