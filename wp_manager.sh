@@ -8,6 +8,15 @@
 #------------------------------------------------------------------------------
 
 #------------------------------------------------------------------------------
+#								### SCRIPT COLORS ###
+#------------------------------------------------------------------------------
+RED='\E[31;40m'
+GREEN='\E[32;40m'
+YELLOW='\E[33;40m'
+BLUE='\E[34;40m'
+COLOR_RESET=$(tput sgr0)
+
+#------------------------------------------------------------------------------
 #								### EXIT STATUSES ###
 #------------------------------------------------------------------------------
 STATUSDISPLAY=160
@@ -19,6 +28,7 @@ E_MULTIPLESWITCHES=173
 E_SETTINGSERRORS=174
 E_NOVHOSTCONF=175
 E_NEWSITEEXISTS=176
+E_NEWSITEDIREXISTS=177
 
 #------------------------------------------------------------------------------
 #								### OPTIONS ###
@@ -94,6 +104,26 @@ PIDFILE=/var/tmp/$(basename $0 .sh).pid
 # This variable will hold a list of VHosts created by the script
 VHOSTLIST=$(grep "# BEGIN WP_MANAGER VHOST" ${VHOSTCONF} | cut -d " " -f 5)
 
+# Developer plugins we want installed on our VHosts
+WP_PLUGINS=(
+	"developer"
+	"debug-bar"
+	"debug-bar-console"
+	"debug-bar-cron"
+	"debug-bar-extender"
+	"rewrite-rules-inspector"
+	"log-deprecated-notices"
+	"monster-widget"
+	"user-switching"
+	"piglatin"
+	"rtl-tester"
+	"regenerate-thumbnails"
+	"simply-show-ids"
+	"theme-test-drive"
+	"theme-check"
+	"wordpress-importer"
+)
+
 # WordPress svn address
 WORDPRESS=${WORDPRESS:-"https://core.svn.wordpress.org/trunk/"}
 
@@ -143,11 +173,14 @@ generateconf() {
 		| sed -e 's/^\([^=]*\)=\${\1:-\([^}]*\)}/\1=\2/' \
 		> ${SCRIPTCONFIG}
 	if [ -r ${SCRIPTCONFIG} ]; then
-		echo "${SCRIPTCONFIG} written correctly. Exiting now."
+		echo -e "${GREEN}${SCRIPTCONFIG} written correctly. Exiting now."
+		echo -e ${COLOR_RESET}
 		rm -f $PIDFILE
 		exit 0
 	else
+		echo -e ${RED}
 		echo "Could not write '${SCRIPTCONFIG}'. Exiting."
+		echo -e ${COLOR_RESET}
 		rm -f $PIDFILE
 		exit $E_WRITECONFERR
 	fi
@@ -183,43 +216,49 @@ check_setup() {
 		ERRORMSG+="\n\"\$DBUSER\" or \"\$DBPASS\" are not set. This script won't be able to install new VHosts without those settings."
 	fi
 	if [[ $ERRORMSG != "" ]]; then
+		echo -e ${YELLOW}
 		echo "we've found some errors in your configuration."
 		echo "It is advisable to create a config file running '$(basename $0) -w'"
 		echo -e "and edit it to suit your current server configuration. \n"
+		echo -e ${RED}
 		echo -e "CONFIGURATION ERRORS:"
-		echo -e $ERRORMSG;
+		echo -e $ERRORMSG
+		echo -e ${COLOR_RESET}
 		rm -f $PIDFILE
 		exit $E_SETTINGSERRORS
 	else
+		echo -e ${GREEN}
 		echo -e "SETUP CHECK PASSED."
+		echo -e ${COLOR_RESET}
 	fi
 }
 
 #------------------------------------------------------------------------------
 #							### Setup base files ###
 #------------------------------------------------------------------------------
+# USAGE: $0 -s
 base_setup() {
 	directory=$(dirname ${WEBSERVER})/${BASEDIR}
-	echo -e "installing base files inside '${directory}'"
+	echo -e "${BLUE}installing base files inside ${GREEN}'${directory}'"
 	if [ ! -d $directory ]; then
-		echo "creating base directory '${directory}'"
+		echo -e "${BLUE}creating base directory '${directory}'"
 		mkdir -p $directory
 	else
-		echo -e "${directory} already exists.\n"
-		read -p "do you wish to rebuild it? [y/n] " -n 1 -r; echo
+		echo -e "${YELLOW}${directory} already exists.${BLUE}\n"
+		read -p "do you wish to rebuild it? [y/n] " -n 1 -r; echo -e ${COLOR_RESET}
 		if [[ ! $REPLY =~ ^[Yy]$ ]]; then
 			exit $USERABORTED
 		else
-			echo "rebuilding base directory '${directory}'"
+			echo -e "${BLUE}rebuilding base directory ${GREEN}'${directory}'${COLOR_RESET}"
 			rm -rf $directory && mkdir $directory
 		fi
 	fi
 	# let's get salty! we'll need those keys in a minute
-	echo "Downloading secret-keys from WordPress.org API"
+	echo -e "${BLUE}Downloading secret-keys from WordPress.org API${COLOR_RESET}"
 	wget -O ${TMPDIR}/wp.keys https://api.wordpress.org/secret-key/1.1/salt/
-	echo "Downloading WordPress from svn"
+	echo -e "${BLUE}Downloading WordPress from svn${COLOR_RESET}"
 	${SVN} co ${WORDPRESS} ${directory}/WP
-	echo "creating base wp-config.php"
+	echo -e "${BLUE}creating base wp-config.php${COLOR_RESET}"
 	cp ${directory}/WP/wp-config-sample.php ${TMPDIR}/wp-config.php
 	# substitute username and password with our settings
 	sed -i "s/username_here/${DBUSER}/" ${TMPDIR}/wp-config.php
@@ -227,34 +266,54 @@ base_setup() {
 	# copy the secret keys into our file
 	sed -i "/#@-/r ${TMPDIR}/wp.keys" ${TMPDIR}/wp-config.php
 	sed -i "/#@+/,/#@-/d" ${TMPDIR}/wp-config.php
-	# activate WP_DEBUG
+	# activate WP_DEBUG and SAVEQUERIES
 	sed -i "s/false)/true)/" ${TMPDIR}/wp-config.php
+	sed -i "/define('WP_DEBUG'/ a define( 'SAVEQUERIES', true );" ${TMPDIR}/wp-config.php
 	# put the wp-config.php file back in its place
 	cp ${TMPDIR}/wp-config.php ${directory}/wp-config.php
+	# download every plugin we need from svn inside PLUGINS directory
+	echo -e "${BLUE}Downloading plugins${COLOR_RESET}"
+	[ ! -d ${directory} ] && mkdir ${directory}/PLUGINS
+	for plugin in "${WP_PLUGINS[@]}"; do
+		echo -e "${BLUE}Downloading ${GREEN}${plugin}${COLOR_RESET}"
+		${SVN} co https://plugins.svn.wordpress.org/${plugin}/trunk ${directory}/PLUGINS/${plugin}
+	done
+	echo -e "\n${GREEN}All base files have been installed successfully. Existing.${COLOR_RESET}"
 }
 
 #------------------------------------------------------------------------------
 #							### Update base files ###
 #------------------------------------------------------------------------------
+# USAGE: $0 -b
 base_update() {
-	echo "updating base files"
+	directory=$(dirname ${WEBSERVER})/${BASEDIR}
+	echo -e "${BLUE}Updating base files inside ${GREEN}'${directory}'"
+	echo -e "${BLUE}Updating WordPress from svn${COLOR_RESET}"
+	${SVN} up ${directory}/WP
+	echo -e "${BLUE}Updating plugins${COLOR_RESET}"
+	for plugin_dir in $(/bin/ls ${directory}/PLUGINS); do
+		echo -e "${BLUE}Updating ${GREEN}${plugin_dir}${COLOR_RESET}"
+		${SVN} up ${directory}/PLUGINS/${plugin_dir}
+	done
+	echo -e "\n${GREEN}All base files have been updated successfully. Existing.${COLOR_RESET}"
 }
 
 #------------------------------------------------------------------------------
 #							### List our VHosts ###
 #------------------------------------------------------------------------------
+# USAGE: $0 -l
 list_vhosts() {
 	VHOSTCOUNT=$(echo ${VHOSTLIST} | wc -w)
 	echo -e "This script has generated ${VHOSTCOUNT} Virtual Hosts.\n"
 	echo $VHOSTLIST
 }
 
+# helper function that checks for already installed VHosts
 check_installed() {
 	new_site=$1
 	echo "${VHOSTLIST}" | grep -q "\b${new_site}\b"
 	if [ $? == 0 ]; then
 		echo "${new_site} already exists. Exiting now."
-		rm -rf $TMPDIR
 		rm -f $PIDFILE
 		exit $E_NEWSITEEXISTS
 	fi
@@ -264,6 +323,7 @@ check_installed() {
 #							### Install new VHost ###
 #------------------------------------------------------------------------------
 install_new() {
+	directory=$(dirname ${WEBSERVER})/${BASEDIR}
 	new_site=$1
 	check_installed $new_site
 	echo "installing $new_site"
@@ -281,6 +341,13 @@ install_new() {
     ServerName ${new_site}
     ErrorLog "/var/log/httpd/${new_site}-error_log"
     CustomLog "/var/log/httpd/${new_site}-access_log" common
+    <Directory /var/www/htdocs/${new_site}>
+        DirectoryIndex index.php
+        AllowOverride All
+        Order Allow,deny
+        Allow from all
+        Require all granted
+    </Directory>
 </VirtualHost>
 # END WP_MANAGER VHOST ${new_site}
 
@@ -293,9 +360,8 @@ EOVH
 		echo "Adding MYSQL database and user"
 		if [ -r "/root/.my.cnf" ]; then
 			mysql -uroot <<MYSQLSCRIPT
-CREATE DATABASE ${new_site};
-CREATE USER '${new_site}'@'localhost' IDENTIFIED BY '${new_site}';
-GRANT ALL PRIVILEGES ON ${new_site}.* TO '${new_site}'@'localhost';
+CREATE DATABASE IF NOT EXISTS ${new_site};
+GRANT ALL PRIVILEGES ON ${new_site}.* TO '${DBUSER}'@'localhost' IDENTIFIED BY '${DBPASS}';
 FLUSH PRIVILEGES;
 MYSQLSCRIPT
 		else
@@ -303,15 +369,40 @@ MYSQLSCRIPT
 			read mysqlrootpass
 			mysql -uroot -p${mysqlrootpass} <<MYSQLSCRIPT
 CREATE DATABASE ${new_site};
-CREATE USER '${new_site}'@'localhost' IDENTIFIED BY '${new_site}';
-GRANT ALL PRIVILEGES ON ${new_site}.* TO '${new_site}'@'localhost';
+GRANT ALL PRIVILEGES ON ${new_site}.* TO '${DBUSER}'@'localhost' IDENTIFIED BY '${DBPASS}';
 FLUSH PRIVILEGES;
 MYSQLSCRIPT
 		fi
 		[ $? -eq 0 ] && echo "database and user created successfully"
 		echo "installing WordPress"
-#		[ ! -d ${WEBSERVER}/${new_site} ] && mkdir -p ${WEBSERVER}/${new_site}
-
+		if [ -d ${WEBSERVER}/${new_site} ]; then
+			echo -e "${RED}The directory '${WEBSERVER}/${new_site}' already exists. Exiting now.${COLOR_RESET}"
+			rm -f $PIDFILE
+			exit $E_NEWSITEDIREXISTS
+		else
+			mkdir -p ${WEBSERVER}/${new_site}
+			mkdir -p ${TMPDIR}/PLUGINS
+			echo -e "${BLUE}Exporting WordPress files${COLOR_RESET}"
+			${SVN} export ${directory}/WP ${TMPDIR}/WP
+			echo -e "${BLUE}Exporting WordPress plugins${COLOR_RESET}"
+			for plugin_dir in $(/bin/ls ${directory}/PLUGINS); do
+				echo -e "${BLUE}Exporting ${GREEN}${plugin_dir}${COLOR_RESET}"
+				${SVN} export ${directory}/PLUGINS/${plugin_dir} ${TMPDIR}/PLUGINS/${plugin_dir}
+			done
+			echo -e "${BLUE}installing WordPress files and plugins to ${GREEN}${new_site}${COLOR_RESET}"
+			cp -R ${TMPDIR}/WP/* ${WEBSERVER}/${new_site}/
+			cp -R ${TMPDIR}/PLUGINS/* ${WEBSERVER}/${new_site}/wp-content/plugins/
+			# final edit to wp-config.php before installing it to $new_site
+			cp ${directory}/wp-config.php ${TMPDIR}/wp-config.php
+			sed -i "s/database_name_here/${new_site}/" ${TMPDIR}/wp-config.php
+			cp ${TMPDIR}/wp-config.php ${WEBSERVER}/${new_site}/wp-config.php
+		fi
+		echo -e "${BLUE}Changing owner of ${GREEN}${new_site}${BLUE} to apache:apache ${COLOR_RESET}"
+		chown -R apache:apache ${WEBSERVER}/${new_site}
+		echo -e "${GREEN}A new website has been created and is awaiting for you."
+		echo "It's now time to restart your apache webserver and enjoy WordPress at '${new_site}'."
+		echo -e "${YELLOW}Don't forget to update your 'hosts' file on every client that is going to"
+		echo "access this server on your lan.${COLOR_RESET}"
 
 	else # I'll have to work on using httpd.conf only
 		echo "using only httpd.conf is not yet working."
@@ -367,8 +458,7 @@ else
 		echo -e "tmp Directory\t\t = $TMPDIR"
 		echo -e "Username\t\t = $DBUSER"
 		echo -e "Password\t\t = $DBPASS"
-		echo -e "Host\t\t\t = $HOST"
-		echo -e "database name\t\t = $DB_NAME \n"
+		echo -e "Host\t\t\t = $HOST \n"
 		check_setup
 		rm -f $PIDFILE; exit $STATUSDISPLAY
 	else
