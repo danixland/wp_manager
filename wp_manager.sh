@@ -29,6 +29,7 @@ E_SETTINGSERRORS=174
 E_NOVHOSTCONF=175
 E_NEWSITEEXISTS=176
 E_NEWSITEDIREXISTS=177
+E_NOVHOSTSUPDATABLE=178
 
 #------------------------------------------------------------------------------
 #								### OPTIONS ###
@@ -105,6 +106,8 @@ set_defaults
 # No need to modify anything from here on.
 #------------------------------------------------------------------------------
 
+# Present Working Directory
+PWD=$(pwd)
 # Here we'll store the temporary files used during this script operation.
 TMPDIR=${TMPDIR:-"/tmp/wp_manager"}.$$
 # Let's prevent the script from running more than one instance at a time.
@@ -135,9 +138,18 @@ WP_PLUGINS=(
 # WordPress svn address
 WORDPRESS=${WORDPRESS:-"https://core.svn.wordpress.org/trunk/"}
 
-#------------------------------------------------------------------------------
-#						### create tmd directory ###
-#------------------------------------------------------------------------------
+# helper function that checks for already installed VHosts
+check_installed() {
+	new_site=$1
+	echo "${VHOSTLIST}" | grep -q "\b${new_site}\b"
+	if [ $? == 0 ]; then
+		echo "${new_site} already exists. Exiting now."
+		rm -f $PIDFILE
+		exit $E_NEWSITEEXISTS
+	fi
+}
+
+# Create tmd directory
 mktmp() {
 	# check for tmpdir and delete it if existing, then recreate it
 	if [ -d ${TMPDIR} ]; then
@@ -151,6 +163,7 @@ mktmp() {
 #------------------------------------------------------------------------------
 #							### Display help text ###
 #------------------------------------------------------------------------------
+# USAGE: $0 -h
 usage() {
 	echo "USAGE:"
 	echo `basename $0` "-h"
@@ -170,6 +183,7 @@ usage() {
 #------------------------------------------------------------------------------
 #							### Generate config file ###
 #------------------------------------------------------------------------------
+# USAGE: $0 -w
 generateconf() {
 	if [ -r $SCRIPTCONFIG ]; then
 		echo "Backing up current '${SCRIPTCONFIG}' to ${SCRIPTCONFIG}.$(date +%Y%m%d_%H%M)."
@@ -252,8 +266,10 @@ base_setup() {
 		echo -e "${BLUE}creating base directory '${directory}'"
 		mkdir -p $directory
 	else
-		echo -e "${YELLOW}${directory} already exists.${BLUE}\n"
-		read -p "do you wish to rebuild it? [y/n] " -n 1 -r; echo -e ${COLOR_RESET}
+		echo -e "${YELLOW}${directory} already exists."
+		echo -e "If you're trying to update your base directory you can run:"
+		echo -e "${GREEN}'$(basename $0) -b'${YELLOW} without needing to rebuild.${BLUE}\n"
+		read -p "do you really wish to rebuild ${directory}? [y/n] " -n 1 -r; echo -e ${COLOR_RESET}
 		if [[ ! $REPLY =~ ^[Yy]$ ]]; then
 			exit $USERABORTED
 		else
@@ -261,6 +277,10 @@ base_setup() {
 			rm -rf $directory && mkdir $directory
 		fi
 	fi
+	# create patches directory
+	mkdir ${directory}/patches
+	# echo today's date in unix timestamp (no seconds)
+	touch ${directory}/lastupdate && echo $(date -d $(date +"%Y-%m-%d") +%s) > ${directory}/lastupdate
 	# let's get salty! we'll need those keys in a minute
 	echo -e "${BLUE}Downloading secret-keys from WordPress.org API${COLOR_RESET}"
 	wget -O ${TMPDIR}/wp.keys https://api.wordpress.org/secret-key/1.1/salt/
@@ -295,14 +315,57 @@ base_setup() {
 # USAGE: $0 -b
 base_update() {
 	directory=$(dirname ${WEBSERVER})/${BASEDIR}
+	# test last update - ideally this options needs to run once a day
+	if [ -r ${directory}/lastupdate ]; then
+		lastup=$(cat ${directory}/lastupdate)
+		today=$(date $(date +"%Y-%m-%d") +%s)
+		if [ $today -eq $lastup ]; then
+			echo -e "${YELLOW}It appears that you updated less than 1 day ago.${BLUE}\n"
+			read -p "do you really wish to continue the update? [y/n] " -n 1 -r; echo -e ${COLOR_RESET}
+			if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+				exit $USERABORTED
+			fi
+		fi
+	fi
 	echo -e "${BLUE}Updating base files inside ${GREEN}'${directory}'"
+	echo -e "${BLUE}Creating patch files inside ${GREEN}'${directory}/patches/'${COLOR_RESET}"
+	[ -d ${directory}/patches ] && rm ${directory}/patches/*
+	# now we have a clean old copy of WordPress
+	${SVN} export ${directory}/WP ${TMPDIR}/WP.old
+	# and a clean new copy here
+	${SVN} co ${WORDPRESS} ${TMPDIR}/WP.trunk
+	${SVN} export ${TMPDIR}/WP.trunk ${TMPDIR}/WP.new
+	rm -rf ${TMPDIR}/WP.trunk
+	# let's create some patch files containing the name of all the modified files 
+	# between the two versions of WP
+
+# Find files existing only in one of the two versions, either new or old
+#	diff -qr WP.old WP.new/ |grep Only | sed -e 's/Only in //' -e 's/: /\//'
+	cd $TMPDIR
+	# Get those files that needs to be deleted with: 
+	diff -qr WP.old WP.new/ |grep Only |grep -e old | sed -e 's/Only in //' -e 's/: /\//' > ${directory}/patches/wp-delete.txt
+	# And files that need to be added with:
+	diff -qr WP.old WP.new/ |grep Only |grep -e new | sed -e 's/Only in //' -e 's/: /\//' >> wp-add-update.txt
+	# And finally we can get those files that need to be updated with:
+	diff -qr WP.old WP.new/ | cut -d " " -f 4 |grep WP. >> wp-add-update.txt
+	sed 's/WP.new\///' < wp-add-update.txt > wp-patch.txt
+	mkdir -p ${directory}/patches/wp-add
+	mods=$(cat ${TMPDIR}/wp-patch.txt)
+	cd WP.new
+	for i in $mods;do
+		cp --parents $i ${directory}/patches/wp-add/
+	done
+	cd $PWD
+
 	echo -e "${BLUE}Updating WordPress from svn${COLOR_RESET}"
+	sleep 3
 	${SVN} up ${directory}/WP
 	echo -e "${BLUE}Updating plugins${COLOR_RESET}"
 	for plugin_dir in $(/bin/ls ${directory}/PLUGINS); do
 		echo -e "${BLUE}Updating ${GREEN}${plugin_dir}${COLOR_RESET}"
 		${SVN} up ${directory}/PLUGINS/${plugin_dir}
 	done
+	echo $(date -d $(date +"%Y-%m-%d") +%s) > ${directory}/lastupdate
 	echo -e "\n${GREEN}All base files have been updated successfully. Existing.${COLOR_RESET}"
 }
 
@@ -316,20 +379,10 @@ list_vhosts() {
 	echo $VHOSTLIST
 }
 
-# helper function that checks for already installed VHosts
-check_installed() {
-	new_site=$1
-	echo "${VHOSTLIST}" | grep -q "\b${new_site}\b"
-	if [ $? == 0 ]; then
-		echo "${new_site} already exists. Exiting now."
-		rm -f $PIDFILE
-		exit $E_NEWSITEEXISTS
-	fi
-}
-
 #------------------------------------------------------------------------------
 #							### Install new VHost ###
 #------------------------------------------------------------------------------
+# USAGE: $0 -i new_site
 install_new() {
 	directory=$(dirname ${WEBSERVER})/${BASEDIR}
 	new_site=$1
@@ -423,8 +476,32 @@ MYSQLSCRIPT
 #------------------------------------------------------------------------------
 #							### Update VHosts ###
 #------------------------------------------------------------------------------
+# USAGE: $0 -u
 update() {
-	echo "updating"
+	directory=$(dirname ${WEBSERVER})/${BASEDIR}
+	todelete="${directory}/patches/wp-delete.txt"
+	VHOSTS=$(echo ${VHOSTLIST})
+	if [ -n "$VHOSTS" ]; then
+		for site in $VHOSTS; do
+			echo -e "${BLUE}Updating WordPress install on ${GREEN}${WEBSERVER}/$site${COLOR_RESET}"
+			cd ${WEBSERVER}/$site
+			if [ -s $todelete ]; then
+				echo -e "${BLUE}Deleting obsolete files${COLOR_RESET}"
+				for file in $(cat $todelete); do
+					rm $file
+				done
+			fi
+			echo -e "${BLUE}Updating WordPress files${COLOR_RESET}"
+			cp -R ${directory}/patches/wp-add/* .
+		done
+	else
+		echo -e "${YELLOW}no VHosts to update, Exiting.${COLOR_RESET}"
+		cd $PWD
+		rm -f $PIDFILE
+		exit $E_NOVHOSTSUPDATABLE
+	fi
+	cd $PWD
+	echo -e "${GREEN}aLL VHosts are up to date now.${COLOR_RESET}"
 }
 
 #------------------------------------------------------------------------------
@@ -478,6 +555,7 @@ else
 		do
 			case $Option in
 				b ) check_setup
+					mktmp
 					base_update
 					break
 					;;
@@ -491,20 +569,26 @@ else
 					break
 					;;
 				u ) check_setup
+					mktmp
 					update
 					break
 					;;
 				s ) check_setup
 					mktmp
 					base_setup
+					break
 					;;
 				l ) list_vhosts
+					break
 					;;
 				w ) generateconf
+					break
 					;;
 				h ) usage
+					break
 					;;
 				* ) usage
+					break
 					;; # default behaviour
 			esac
 		done
