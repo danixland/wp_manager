@@ -1,6 +1,6 @@
 #! /bin/bash
 
-# Version 0.7.3
+# Version 0.7.4
 
 #------------------------------------------------------------------------------
 # 								wp_manager.sh
@@ -333,9 +333,8 @@ base_update() {
 	# now we have a clean old copy of WordPress
 	${SVN} export ${directory}/WP ${TMPDIR}/WP.old
 	# and a clean new copy here
-	${SVN} co ${WORDPRESS} ${TMPDIR}/WP.trunk
-	${SVN} export ${TMPDIR}/WP.trunk ${TMPDIR}/WP.new
-	rm -rf ${TMPDIR}/WP.trunk
+	${SVN} up ${directory}/WP
+	${SVN} export ${directory}/WP ${TMPDIR}/WP.new
 	# let's create some patch files containing the name of all the modified files 
 	# between the two versions of WP
 
@@ -357,9 +356,6 @@ base_update() {
 	done
 	cd $PWD
 
-	echo -e "${BLUE}Updating WordPress from svn${COLOR_RESET}"
-	sleep 3
-	${SVN} up ${directory}/WP
 	echo -e "${BLUE}Updating plugins${COLOR_RESET}"
 	for plugin_dir in $(/bin/ls ${directory}/PLUGINS); do
 		echo -e "${BLUE}Updating ${GREEN}${plugin_dir}${COLOR_RESET}"
@@ -468,7 +464,7 @@ MYSQLSCRIPT
 		echo -e "${GREEN}echo -e \"\$(hostname -i)\\\t\\\t${new_site}\" >> /etc/hosts${COLOR_RESET}"
 
 	else # I'll have to work on using httpd.conf only
-		echo "using only httpd.conf is not yet working."
+		echo -e "${RED}using only httpd.conf is not yet working.${COLOR_RESET}"
 		exit $E_NOVHOSTCONF
 	fi
 }
