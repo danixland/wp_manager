@@ -149,7 +149,7 @@ check_installed() {
 	fi
 }
 
-# Create tmd directory
+# Create tmp directory
 mktmp() {
 	# check for tmpdir and delete it if existing, then recreate it
 	if [ -d ${TMPDIR} ]; then
@@ -168,14 +168,20 @@ usage() {
 	echo "USAGE:"
 	echo `basename $0` "-h"
 	echo "this shows the help and exits"; echo
+	echo `basename $0` "-w"
+	echo "Generate a config file for this script."; echo
+	echo `basename $0` "-s"
+	echo "Setup the local cache, downloads WordPress and the basic plugins."; echo
 	echo `basename $0` "-b"
-	echo "updates all base files like WordPress local repo and plugins"; echo
+	echo "updates the local cached WordPress codebase and plugins"; echo
+	echo `basename $0` "-l"
+	echo "Lists all VirtualHosts created by this script."; echo
 	echo `basename $0` "-i <new directory name>"
 	echo "install the VHost 'new directory name'"; echo
 	echo `basename $0` "-d <directory name>"
 	echo "Deletes the VHost 'directory name' and all of its data"; echo
 	echo `basename $0` "-u"
-	echo "updates all VHosts containing a WordPress install"; echo
+	echo "updates all VHosts created by this script."; echo
 	rm -f $PIDFILE
 	exit $E_NOARGS
 }
