@@ -66,10 +66,18 @@ APACHEUSER=${APACHEUSER:-"apache"}
 # The server group under which the apache executable is running
 APACHEGROUP=${APACHEGROUP:-"apache"}
 
-# The Virtual Hosts config file.
-# If your distro uses only the main file "httpd.conf" to store the vhosts
-# settings leave this parameter blank.
+# THE VIRTUAL HOSTS CONFIG FILES.
+# The next two settings are mutually exclusive, if your distro uses the main
+# httpd.conf file to store settings about your VirtualHosts, leave both 
+# options empty.
+
+# If your distro uses one single file to store the VirtualHosts
+# settings fill this parameter and leave the following one empty.
 VHOSTCONF=${VHOSTCONF:-"$(dirname $APACHECONF)/extra/httpd-vhosts.conf"}
+# The Virtual Hosts config directory.
+# If this option is used, it supersedes the $VHOSTCONF option so it is 
+# ok to leave that empty.
+VHOSTCONFDIR=${VHOSTCONFDIR:-"$(dirname $APACHECONF)/extra/httpd-vhosts.conf"}
 
 # This is the interface where the VHost will be listening for connections.
 # All VHosts will rely on this setting using name based vhosts for our setup.
