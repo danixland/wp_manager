@@ -71,13 +71,13 @@ APACHEGROUP=${APACHEGROUP:-"apache"}
 # httpd.conf file to store settings about your VirtualHosts, leave both 
 # options empty.
 
-# If your distro uses one single file to store the VirtualHosts
-# settings fill this parameter and leave the following one empty.
-VHOSTCONF=${VHOSTCONF:-"$(dirname $APACHECONF)/extra/httpd-vhosts.conf"}
 # The Virtual Hosts config directory.
 # If this option is used, it supersedes the $VHOSTCONF option so it is 
 # ok to leave that empty.
-VHOSTCONFDIR=${VHOSTCONFDIR:-"$(dirname $APACHECONF)/extra/httpd-vhosts.conf"}
+VHOSTCONFDIR=${VHOSTCONFDIR:-"$(dirname $APACHECONF)/vhost.d"}
+# If your distro uses one single file to store the VirtualHosts
+# settings fill this parameter and leave the previous one empty.
+VHOSTCONF=${VHOSTCONF:-"$(dirname $APACHECONF)/extra/httpd-vhosts.conf"}
 
 # This is the interface where the VHost will be listening for connections.
 # All VHosts will rely on this setting using name based vhosts for our setup.
@@ -120,8 +120,15 @@ PWD=$(pwd)
 TMPDIR=${TMPDIR:-"/tmp/wp_manager"}.$$
 # Let's prevent the script from running more than one instance at a time.
 PIDFILE=/var/tmp/$(basename $0 .sh).pid
+
 # This variable will hold a list of VHosts created by the script
-VHOSTLIST=$(grep "# BEGIN WP_MANAGER VHOST" ${VHOSTCONF} | cut -d " " -f 5)
+if [ -z "$VHOSTCONFDIR" ]; then
+	# we are using the monolitic $VHOSTCONF to pull informations about our VHosts
+	VHOSTLIST=$(grep "# BEGIN WP_MANAGER VHOST" ${VHOSTCONF} | cut -d " " -f 5)
+else
+	# we have a separate directory 
+	VHOSTLIST=$(/bin/ls ${VHOSTCONFDIR}/wpm_*.conf)
+fi
 
 # Developer plugins we want installed on our VHosts
 WP_PLUGINS=(
@@ -149,8 +156,13 @@ WORDPRESS=${WORDPRESS:-"https://core.svn.wordpress.org/trunk/"}
 # helper function that checks for already installed VHosts
 check_installed() {
 	new_site=$1
-	echo "${VHOSTLIST}" | grep -q "\b${new_site}\b"
-	if [ $? == 0 ]; then
+	if [ $VHOSTCONFDIR ]; then
+		checkstring="\bwpm_${new_site}.conf\b"
+	else
+		checkstring="\b${new_site}\b"
+	fi
+	echo "${VHOSTLIST}" | grep -q "${checkstring}"
+	if [[ $? == 0 || -d ${WEBSERVER}/${new_site} ]]; then
 		echo "${new_site} already exists. Exiting now."
 		rm -f $PIDFILE
 		exit $E_NEWSITEEXISTS
@@ -236,14 +248,20 @@ check_setup() {
 	if [ ! -d ${WEBSERVER} ]; then
 		ERRORMSG+="\n\"${WEBSERVER}\" is not a directory, check your \$WEBSERVER setting."
 	fi
-	# Apache conf directory check
+	# Apache conf file check
 	if [ ! -r ${APACHECONF} ]; then
 		ERRORMSG+="\nCannot read \"${APACHECONF}\", check your \$APACHECONF setting."
 	else
-		# check the VHosts file
-		if [[ ${VHOSTCONF} ]]; then
-			if [ ! -r ${VHOSTCONF} ]; then
-				ERRORMSG+="\n\"${VHOSTCONF}\" can't be read, check your \$VHOSTCONF setting."
+		# check the VHosts conf dir first
+		if [[ ${VHOSTCONFDIR} ]]; then
+			if [ ! -d ${VHOSTCONFDIR} ]; then
+				ERRORMSG+="\n\"${VHOSTCONFDIR}\" is not a directory, check your \$VHOSTCONFDIR setting."
+		else
+			# finally check the VHosts file
+			if [[ ${VHOSTCONF} ]]; then
+				if [ ! -r ${VHOSTCONF} ]; then
+					ERRORMSG+="\n\"${VHOSTCONF}\" can't be read, check your \$VHOSTCONF setting."
+				fi
 			fi
 		fi
 	fi
@@ -398,10 +416,32 @@ install_new() {
 	new_site=$1
 	check_installed $new_site
 	echo "installing $new_site"
-	# do we have a vhost-conf file? If yes copy it to our tmp directory and edit
-	# it there before putting it back in its place, else work on the httpd.conf
-	# in the same way
-	if [ $VHOSTCONF ]; then
+	# we check first for a VHOSTCONFDIR, and if we haven't set one we try other methods
+	if [ $VHOSTCONFDIR ]; then
+		VHOSTFILE="wpm_${new_site}.conf"
+		cat >> ${VHOSTFILE} <<EOVH
+# BEGIN WP_MANAGER VHOST ${new_site}
+<VirtualHost ${VHOSTLISTEN}>
+    ServerAdmin ${SERVERADMIN}
+    DocumentRoot "${WEBSERVER}/${new_site}"
+    ServerName ${new_site}
+    ErrorLog "/var/log/httpd/${new_site}-error_log"
+    CustomLog "/var/log/httpd/${new_site}-access_log" common
+    <Directory /var/www/htdocs/${new_site}>
+        DirectoryIndex index.php
+        AllowOverride All
+        Order Allow,deny
+        Allow from all
+        Require all granted
+    </Directory>
+</VirtualHost>
+# END WP_MANAGER VHOST ${new_site}
+
+EOVH
+
+	# so, do we have a vhost-conf file? If yes copy it to our tmp directory and edit
+	# it there before putting it back in its place.
+	elif [ $VHOSTCONF ]; then
 		TMPVHOSTCONF=${TMPDIR}/$(basename ${VHOSTCONF}).$(date +%Y%m%d_%H%M)
 		cp ${VHOSTCONF} $TMPVHOSTCONF
 		cat >> ${TMPVHOSTCONF} <<EOVH
@@ -428,59 +468,61 @@ EOVH
 		mv ${VHOSTCONF} ${VHOSTCONF}.$(date +%Y%m%d_%H%M)
 		cp ${TMPVHOSTCONF} ${VHOSTCONF}
 		[ $? -eq 0 ] && echo "${VHOSTCONF} modified successfully"
-		echo "Adding MYSQL database and user"
-		if [ -r "/root/.my.cnf" ]; then
-			mysql -uroot <<MYSQLSCRIPT
+
+	# We don't have a vhosts config directory nor a monolitic vhost config file, falling back to 
+	# modifying the main httpd.conf file
+	# WARNING - not yet implemented
+	else
+		echo -e "${RED}using only httpd.conf is not yet working.${COLOR_RESET}"
+		exit $E_NOVHOSTCONF
+	fi
+
+	echo "Adding MYSQL database and user"
+	if [ -r "/root/.my.cnf" ]; then
+		mysql -uroot <<MYSQLSCRIPT
 CREATE DATABASE IF NOT EXISTS ${new_site};
 GRANT ALL PRIVILEGES ON ${new_site}.* TO '${DBUSER}'@'localhost' IDENTIFIED BY '${DBPASS}';
 FLUSH PRIVILEGES;
 MYSQLSCRIPT
-		else
-			echo "Please enter the password for mysql root user:"
-			read mysqlrootpass
-			mysql -uroot -p${mysqlrootpass} <<MYSQLSCRIPT
+	else
+		echo "Please enter the password for mysql root user:"
+		read mysqlrootpass
+		mysql -uroot -p${mysqlrootpass} <<MYSQLSCRIPT
 CREATE DATABASE ${new_site};
 GRANT ALL PRIVILEGES ON ${new_site}.* TO '${DBUSER}'@'localhost' IDENTIFIED BY '${DBPASS}';
 FLUSH PRIVILEGES;
 MYSQLSCRIPT
-		fi
-		[ $? -eq 0 ] && echo "database and user created successfully"
-		echo "installing WordPress"
-		if [ -d ${WEBSERVER}/${new_site} ]; then
-			echo -e "${RED}The directory '${WEBSERVER}/${new_site}' already exists. Exiting now.${COLOR_RESET}"
-			rm -f $PIDFILE
-			exit $E_NEWSITEDIREXISTS
-		else
-			mkdir -p ${WEBSERVER}/${new_site}
-			mkdir -p ${TMPDIR}/PLUGINS
-			echo -e "${BLUE}Exporting WordPress files${COLOR_RESET}"
-			${SVN} export ${directory}/WP ${TMPDIR}/WP
-			echo -e "${BLUE}Exporting WordPress plugins${COLOR_RESET}"
-			for plugin_dir in $(/bin/ls ${directory}/PLUGINS); do
-				echo -e "${BLUE}Exporting ${GREEN}${plugin_dir}${COLOR_RESET}"
-				${SVN} export ${directory}/PLUGINS/${plugin_dir} ${TMPDIR}/PLUGINS/${plugin_dir}
-			done
-			echo -e "${BLUE}installing WordPress files and plugins to ${GREEN}${new_site}${COLOR_RESET}"
-			cp -R ${TMPDIR}/WP/* ${WEBSERVER}/${new_site}/
-			cp -R ${TMPDIR}/PLUGINS/* ${WEBSERVER}/${new_site}/wp-content/plugins/
-			# final edit to wp-config.php before installing it to $new_site
-			cp ${directory}/wp-config.php ${TMPDIR}/wp-config.php
-			sed -i "s/database_name_here/${new_site}/" ${TMPDIR}/wp-config.php
-			cp ${TMPDIR}/wp-config.php ${WEBSERVER}/${new_site}/wp-config.php
-		fi
-		echo -e "${BLUE}Changing owner of ${GREEN}${new_site}${BLUE} to ${APACHEUSER}:${APACHEGROUP} ${COLOR_RESET}"
-		chown -R ${APACHEUSER}:${APACHEGROUP} ${WEBSERVER}/${new_site}
-		echo -e "${GREEN}A new website has been created and is awaiting for you."
-		echo "It's now time to restart your apache webserver and enjoy WordPress at '${new_site}'."
-		echo -e "${YELLOW}Don't forget to update your 'hosts' file on every client that is going to"
-		echo "access this server on your lan."
-		echo -e "${BLUE}You can use this command to modify the file /etc/hosts on your linux client:"
-		echo -e "${GREEN}echo -e \"\$(hostname -i)\\\t\\\t${new_site}\" >> /etc/hosts${COLOR_RESET}"
-
-	else # I'll have to work on using httpd.conf only
-		echo -e "${RED}using only httpd.conf is not yet working.${COLOR_RESET}"
-		exit $E_NOVHOSTCONF
 	fi
+	[ $? -eq 0 ] && echo "database and user created successfully"
+
+	echo "installing WordPress"
+	mkdir -p ${WEBSERVER}/${new_site}
+	mkdir -p ${TMPDIR}/PLUGINS
+	echo -e "${BLUE}Exporting WordPress files${COLOR_RESET}"
+	${SVN} export ${directory}/WP ${TMPDIR}/WP
+	echo -e "${BLUE}Exporting WordPress plugins${COLOR_RESET}"
+	for plugin_dir in $(/bin/ls ${directory}/PLUGINS); do
+		echo -e "${BLUE}Exporting ${GREEN}${plugin_dir}${COLOR_RESET}"
+		${SVN} export ${directory}/PLUGINS/${plugin_dir} ${TMPDIR}/PLUGINS/${plugin_dir}
+	done
+
+	echo -e "${BLUE}installing WordPress files and plugins to ${GREEN}${new_site}${COLOR_RESET}"
+	cp -R ${TMPDIR}/WP/* ${WEBSERVER}/${new_site}/
+	cp -R ${TMPDIR}/PLUGINS/* ${WEBSERVER}/${new_site}/wp-content/plugins/
+	# final edit to wp-config.php before installing it to $new_site
+	cp ${directory}/wp-config.php ${TMPDIR}/wp-config.php
+	sed -i "s/database_name_here/${new_site}/" ${TMPDIR}/wp-config.php
+	cp ${TMPDIR}/wp-config.php ${WEBSERVER}/${new_site}/wp-config.php
+
+	echo -e "${BLUE}Changing owner of ${GREEN}${new_site}${BLUE} to ${APACHEUSER}:${APACHEGROUP} ${COLOR_RESET}"
+	chown -R ${APACHEUSER}:${APACHEGROUP} ${WEBSERVER}/${new_site}
+
+	echo -e "${GREEN}A new website has been created and is awaiting for you."
+	echo -e "It's now time to restart your apache webserver and enjoy WordPress at '${new_site}'.\n"
+	echo -e "${YELLOW}Don't forget to update your 'hosts' file on every client that is going to"
+	echo "access this server on your lan."
+	echo -e "${BLUE}You can use this command to modify the file /etc/hosts on your linux client:"
+	echo -e "${GREEN}echo -e \"\$(hostname -i)\\\t\\\t${new_site}\" >> /etc/hosts${COLOR_RESET}"
 }
 
 #------------------------------------------------------------------------------
