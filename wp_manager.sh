@@ -30,6 +30,18 @@ E_NOVHOSTCONF=175
 E_NEWSITEEXISTS=176
 E_NEWSITEDIREXISTS=177
 E_NOVHOSTSUPDATABLE=178
+E_ONLYROOTALLOWED=179
+
+# Exit the script on errors:
+set -e
+trap 'echo "$0 FAILED at line ${LINENO}" | tee -s /var/log/$(basename $0 .sh)_error.log' ERR
+
+# Only root should run this script
+if [[ $EUID -ne 0 ]]; then
+	echo -e "${RED}Only root can run this script. Exiting${COLOR_RESET}"
+	exit $E_ONLYROOTALLOWED
+fi
+
 
 #------------------------------------------------------------------------------
 #								### OPTIONS ###
@@ -404,7 +416,7 @@ base_update() {
 #------------------------------------------------------------------------------
 # USAGE: $0 -l
 list_vhosts() {
-	if [ ! -z $VHOSTLIST ]; then
+	if [ -n "$VHOSTLIST" ]; then
 		VHOSTCOUNT=$(echo ${VHOSTLIST} | wc -w)
 		echo -e "This script has generated ${VHOSTCOUNT} Virtual Hosts.\n"
 		echo $VHOSTLIST
