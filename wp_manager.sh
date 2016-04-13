@@ -1,6 +1,6 @@
 #! /bin/bash
 
-# Version 0.7.4
+# Version 0.7.5
 
 #------------------------------------------------------------------------------
 # 								wp_manager.sh
@@ -31,17 +31,6 @@ E_NEWSITEEXISTS=176
 E_NEWSITEDIREXISTS=177
 E_NOVHOSTSUPDATABLE=178
 E_ONLYROOTALLOWED=179
-
-# Exit the script on errors:
-set -e
-trap 'echo "$0 FAILED at line ${LINENO}" | tee -s /var/log/$(basename $0 .sh)_error.log' ERR
-
-# Only root should run this script
-if [[ $EUID -ne 0 ]]; then
-	echo -e "${RED}Only root can run this script. Exiting${COLOR_RESET}"
-	exit $E_ONLYROOTALLOWED
-fi
-
 
 #------------------------------------------------------------------------------
 #								### OPTIONS ###
@@ -432,20 +421,21 @@ list_vhosts() {
 install_new() {
 	directory=$(dirname ${WEBSERVER})/${BASEDIR}
 	new_site=$1
-	check_installed $new_site
-	echo "installing $new_site"
+	clean_site=${new_site//[^a-zA-Z0-9]/}
+	check_installed $clean_site
+	echo "installing $clean_site"
 	# we check first for a VHOSTCONFDIR, and if we haven't set one we try other methods
 	if [ $VHOSTCONFDIR ]; then
-		VHOSTFILE="wpm_${new_site}.conf"
-		cat >> ${VHOSTFILE} <<EOVH
-# BEGIN WP_MANAGER VHOST ${new_site}
+		VHOSTFILE="wpm_${clean_site}.conf"
+		cat >> ${VHOSTCONFDIR}/${VHOSTFILE} <<EOVH
+# BEGIN WP_MANAGER VHOST ${clean_site}
 <VirtualHost ${VHOSTLISTEN}>
     ServerAdmin ${SERVERADMIN}
-    DocumentRoot "${WEBSERVER}/${new_site}"
-    ServerName ${new_site}
-    ErrorLog "/var/log/httpd/${new_site}-error_log"
-    CustomLog "/var/log/httpd/${new_site}-access_log" common
-    <Directory /var/www/htdocs/${new_site}>
+    DocumentRoot "${WEBSERVER}/${clean_site}"
+    ServerName ${clean_site}
+    ErrorLog "/var/log/httpd/${clean_site}-error_log"
+    CustomLog "/var/log/httpd/${clean_site}-access_log" common
+    <Directory /var/www/htdocs/${clean_site}>
         DirectoryIndex index.php
         AllowOverride All
         Order Allow,deny
@@ -453,7 +443,7 @@ install_new() {
         Require all granted
     </Directory>
 </VirtualHost>
-# END WP_MANAGER VHOST ${new_site}
+# END WP_MANAGER VHOST ${clean_site}
 
 EOVH
 
@@ -463,14 +453,14 @@ EOVH
 		TMPVHOSTCONF=${TMPDIR}/$(basename ${VHOSTCONF}).$(date +%Y%m%d_%H%M)
 		cp ${VHOSTCONF} $TMPVHOSTCONF
 		cat >> ${TMPVHOSTCONF} <<EOVH
-# BEGIN WP_MANAGER VHOST ${new_site}
+# BEGIN WP_MANAGER VHOST ${clean_site}
 <VirtualHost ${VHOSTLISTEN}>
     ServerAdmin ${SERVERADMIN}
-    DocumentRoot "${WEBSERVER}/${new_site}"
-    ServerName ${new_site}
-    ErrorLog "/var/log/httpd/${new_site}-error_log"
-    CustomLog "/var/log/httpd/${new_site}-access_log" common
-    <Directory /var/www/htdocs/${new_site}>
+    DocumentRoot "${WEBSERVER}/${clean_site}"
+    ServerName ${clean_site}
+    ErrorLog "/var/log/httpd/${clean_site}-error_log"
+    CustomLog "/var/log/httpd/${clean_site}-access_log" common
+    <Directory /var/www/htdocs/${clean_site}>
         DirectoryIndex index.php
         AllowOverride All
         Order Allow,deny
@@ -478,7 +468,7 @@ EOVH
         Require all granted
     </Directory>
 </VirtualHost>
-# END WP_MANAGER VHOST ${new_site}
+# END WP_MANAGER VHOST ${clean_site}
 
 EOVH
 		# let's put the file back in its place but we can make a backup first
@@ -498,23 +488,23 @@ EOVH
 	echo "Adding MYSQL database and user"
 	if [ -r "/root/.my.cnf" ]; then
 		mysql -uroot <<MYSQLSCRIPT
-CREATE DATABASE IF NOT EXISTS ${new_site};
-GRANT ALL PRIVILEGES ON ${new_site}.* TO '${DBUSER}'@'localhost' IDENTIFIED BY '${DBPASS}';
+CREATE DATABASE IF NOT EXISTS ${clean_site};
+GRANT ALL PRIVILEGES ON ${clean_site}.* TO '${DBUSER}'@'localhost' IDENTIFIED BY '${DBPASS}';
 FLUSH PRIVILEGES;
 MYSQLSCRIPT
 	else
 		echo "Please enter the password for mysql root user:"
 		read mysqlrootpass
 		mysql -uroot -p${mysqlrootpass} <<MYSQLSCRIPT
-CREATE DATABASE ${new_site};
-GRANT ALL PRIVILEGES ON ${new_site}.* TO '${DBUSER}'@'localhost' IDENTIFIED BY '${DBPASS}';
+CREATE DATABASE IF NOT EXISTS ${clean_site};
+GRANT ALL PRIVILEGES ON ${clean_site}.* TO '${DBUSER}'@'localhost' IDENTIFIED BY '${DBPASS}';
 FLUSH PRIVILEGES;
 MYSQLSCRIPT
 	fi
 	[ $? -eq 0 ] && echo "database and user created successfully"
 
 	echo "installing WordPress"
-	mkdir -p ${WEBSERVER}/${new_site}
+	mkdir -p ${WEBSERVER}/${clean_site}
 	mkdir -p ${TMPDIR}/PLUGINS
 	echo -e "${BLUE}Exporting WordPress files${COLOR_RESET}"
 	${SVN} export ${directory}/WP ${TMPDIR}/WP
@@ -524,23 +514,23 @@ MYSQLSCRIPT
 		${SVN} export ${directory}/PLUGINS/${plugin_dir} ${TMPDIR}/PLUGINS/${plugin_dir}
 	done
 
-	echo -e "${BLUE}installing WordPress files and plugins to ${GREEN}${new_site}${COLOR_RESET}"
-	cp -R ${TMPDIR}/WP/* ${WEBSERVER}/${new_site}/
-	cp -R ${TMPDIR}/PLUGINS/* ${WEBSERVER}/${new_site}/wp-content/plugins/
-	# final edit to wp-config.php before installing it to $new_site
+	echo -e "${BLUE}installing WordPress files and plugins to ${GREEN}${clean_site}${COLOR_RESET}"
+	cp -R ${TMPDIR}/WP/* ${WEBSERVER}/${clean_site}/
+	cp -R ${TMPDIR}/PLUGINS/* ${WEBSERVER}/${clean_site}/wp-content/plugins/
+	# final edit to wp-config.php before installing it to $clean_site
 	cp ${directory}/wp-config.php ${TMPDIR}/wp-config.php
-	sed -i "s/database_name_here/${new_site}/" ${TMPDIR}/wp-config.php
-	cp ${TMPDIR}/wp-config.php ${WEBSERVER}/${new_site}/wp-config.php
+	sed -i "s/database_name_here/${clean_site}/" ${TMPDIR}/wp-config.php
+	cp ${TMPDIR}/wp-config.php ${WEBSERVER}/${clean_site}/wp-config.php
 
-	echo -e "${BLUE}Changing owner of ${GREEN}${new_site}${BLUE} to ${APACHEUSER}:${APACHEGROUP} ${COLOR_RESET}"
-	chown -R ${APACHEUSER}:${APACHEGROUP} ${WEBSERVER}/${new_site}
+	echo -e "${BLUE}Changing owner of ${GREEN}${clean_site}${BLUE} to ${APACHEUSER}:${APACHEGROUP} ${COLOR_RESET}"
+	chown -R ${APACHEUSER}:${APACHEGROUP} ${WEBSERVER}/${clean_site}
 
 	echo -e "${GREEN}A new website has been created and is awaiting for you."
-	echo -e "It's now time to restart your apache webserver and enjoy WordPress at '${new_site}'.\n"
+	echo -e "It's now time to restart your apache webserver and enjoy WordPress at 'http://${clean_site}'.\n"
 	echo -e "${YELLOW}Don't forget to update your 'hosts' file on every client that is going to"
 	echo "access this server on your lan."
 	echo -e "${BLUE}You can use this command to modify the file /etc/hosts on your linux client:"
-	echo -e "${GREEN}echo -e \"\$(hostname -i)\\\t\\\t${new_site}\" >> /etc/hosts${COLOR_RESET}"
+	echo -e "${GREEN}echo -e \"\$(hostname -i)\\\t\\\t${clean_site}\" >> /etc/hosts${COLOR_RESET}"
 }
 
 #------------------------------------------------------------------------------
@@ -586,6 +576,16 @@ delete() {
 #------------------------------------------------------------------------------
 #							### Ready? Set, GO!! ###
 #------------------------------------------------------------------------------
+
+# Exit the script on errors:
+#set -e
+trap 'echo "$0 FAILED at line ${LINENO}" | tee -s /var/log/$(basename $0 .sh)_error.log' ERR
+
+# Only root should run this script
+if [[ $EUID -ne 0 ]]; then
+	echo -e "${RED}Only root can run this script. Exiting${COLOR_RESET}"
+	exit $E_ONLYROOTALLOWED
+fi
 
 # Make sure the PID file is removed when we kill the process
 trap 'rm -f $PIDFILE; exit 1' TERM INT
