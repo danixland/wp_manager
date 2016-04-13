@@ -35,15 +35,6 @@ E_NOVHOSTSUPDATABLE=178
 #								### OPTIONS ###
 #------------------------------------------------------------------------------
 
-# path to the config file. Can be relative to the script or absolute.
-# RELATIVE SCRIPTCONFIG:
-SCRIPTCONFIG=${SCRIPTCONFIG:-"$(dirname $0)/$(basename $0 .sh).conf"}
-# ABSOLUTE SCRIPTCONFIG:
-#SCRIPTCONFIG=${SCRIPTCONFIG:-"/etc/$(basename $0 .sh).conf"}
-
-# Read the configfile if it exists
-[ -f ${SCRIPTCONFIG} ] && . ${SCRIPTCONFIG}
-
 # Script defaults - edits should go into the config file
 set_defaults() {
 # Binaries to use:
@@ -114,6 +105,15 @@ set_defaults
 # No need to modify anything from here on.
 #------------------------------------------------------------------------------
 
+# path to the config file. Can be relative to the script or absolute.
+# RELATIVE SCRIPTCONFIG:
+SCRIPTCONFIG=${SCRIPTCONFIG:-"$(dirname $0)/$(basename $0 .sh).conf"}
+# ABSOLUTE SCRIPTCONFIG:
+#SCRIPTCONFIG=${SCRIPTCONFIG:-"/etc/$(basename $0 .sh).conf"}
+
+# Read the configfile if it exists
+[ -f ${SCRIPTCONFIG} ] && . ${SCRIPTCONFIG}
+
 # Present Working Directory
 PWD=$(pwd)
 # Here we'll store the temporary files used during this script operation.
@@ -127,7 +127,8 @@ if [ -z "$VHOSTCONFDIR" ]; then
 	VHOSTLIST=$(grep "# BEGIN WP_MANAGER VHOST" ${VHOSTCONF} | cut -d " " -f 5)
 else
 	# we have a separate directory 
-	VHOSTLIST=$(/bin/ls ${VHOSTCONFDIR}/wpm_*.conf)
+	VHOSTLIST=""
+	[ -n "$(/bin/ls -A ${VHOSTCONFDIR}/wpm_*.conf 2>/dev/null)" ] && VHOSTLIST=$(/bin/ls -A ${VHOSTCONFDIR}/wpm_*.conf 2>/dev/null)
 fi
 
 # Developer plugins we want installed on our VHosts
@@ -256,6 +257,7 @@ check_setup() {
 		if [[ ${VHOSTCONFDIR} ]]; then
 			if [ ! -d ${VHOSTCONFDIR} ]; then
 				ERRORMSG+="\n\"${VHOSTCONFDIR}\" is not a directory, check your \$VHOSTCONFDIR setting."
+			fi
 		else
 			# finally check the VHosts file
 			if [[ ${VHOSTCONF} ]]; then
@@ -402,9 +404,13 @@ base_update() {
 #------------------------------------------------------------------------------
 # USAGE: $0 -l
 list_vhosts() {
-	VHOSTCOUNT=$(echo ${VHOSTLIST} | wc -w)
-	echo -e "This script has generated ${VHOSTCOUNT} Virtual Hosts.\n"
-	echo $VHOSTLIST
+	if [ ! -z $VHOSTLIST ]; then
+		VHOSTCOUNT=$(echo ${VHOSTLIST} | wc -w)
+		echo -e "This script has generated ${VHOSTCOUNT} Virtual Hosts.\n"
+		echo $VHOSTLIST
+	else
+		echo "no vhosts yet. Create one first"
+	fi
 }
 
 #------------------------------------------------------------------------------
@@ -560,7 +566,9 @@ update() {
 #							### Delete selected VHost ###
 #------------------------------------------------------------------------------
 delete() {
-	echo "deleting $1"
+	del_vhost=$1
+	check_installed $del_vhost
+	echo "deleting ${del_vhost}"
 }
 
 #------------------------------------------------------------------------------
@@ -594,6 +602,7 @@ else
 		echo -e "Apache config\t\t = ${GREEN}$APACHECONF${COLOR_RESET}"
 		echo -e "Apache user:group\t = ${GREEN}${APACHEUSER}:${APACHEGROUP}${COLOR_RESET}"
 		echo -e "Server Admin\t\t = ${GREEN}$SERVERADMIN${COLOR_RESET}"
+		echo -e "vhost config Directory\t = ${GREEN}$VHOSTCONFDIR${COLOR_RESET}"
 		echo -e "vhost config file\t = ${GREEN}$VHOSTCONF${COLOR_RESET}"
 		echo -e "Base Directory\t\t = ${GREEN}$BASEDIR${COLOR_RESET}"
 		echo -e "tmp Directory\t\t = ${GREEN}$TMPDIR${COLOR_RESET}"
