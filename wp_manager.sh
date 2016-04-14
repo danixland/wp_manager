@@ -165,9 +165,8 @@ check_installed() {
 	fi
 	echo "${VHOSTLIST}" | grep -q "${checkstring}"
 	if [[ $? == 0 || -d ${WEBSERVER}/${new_site} ]]; then
-		echo "${new_site} already exists. Exiting now."
-		rm -f $PIDFILE
-		exit $E_NEWSITEEXISTS
+		# return a special exit code to let other functions know that the site already exists
+		return 150
 	fi
 }
 
@@ -306,6 +305,8 @@ base_setup() {
 		echo -e "${GREEN}'$(basename $0) -b'${YELLOW} without needing to rebuild.${BLUE}\n"
 		read -p "do you really wish to rebuild ${directory}? [y/n] " -n 1 -r; echo -e ${COLOR_RESET}
 		if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+			[ $CLEANUP == "yes" ] && [ -d $TMPDIR ] && rm -rf $TMPDIR
+			rm -f $PIDFILE
 			exit $USERABORTED
 		else
 			echo -e "${BLUE}rebuilding base directory ${GREEN}'${directory}'${COLOR_RESET}"
@@ -358,6 +359,8 @@ base_update() {
 			echo -e "${YELLOW}It appears that you updated less than 1 day ago.${BLUE}\n"
 			read -p "do you really wish to continue the update? [y/n] " -n 1 -r; echo -e ${COLOR_RESET}
 			if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+				[ $CLEANUP == "yes" ] && [ -d $TMPDIR ] && rm -rf $TMPDIR
+				rm -f $PIDFILE
 				exit $USERABORTED
 			fi
 		fi
@@ -423,6 +426,13 @@ install_new() {
 	new_site=$1
 	clean_site=${new_site//[^a-zA-Z0-9]/}
 	check_installed $clean_site
+	if [ $? -eq 150 ]; then
+		# $clean_site already exists
+		echo "${clean_site} already exists. Exiting now."
+		[ $CLEANUP == "yes" ] && [ -d $TMPDIR ] && rm -rf $TMPDIR
+		rm -f $PIDFILE
+		exit $E_NEWSITEEXISTS
+	fi
 	echo "installing $clean_site"
 	# we check first for a VHOSTCONFDIR, and if we haven't set one we try other methods
 	if [ $VHOSTCONFDIR ]; then
@@ -485,7 +495,7 @@ EOVH
 		exit $E_NOVHOSTCONF
 	fi
 
-	echo "Adding MYSQL database and user"
+	echo "Adding MYSQL database"
 	if [ -r "/root/.my.cnf" ]; then
 		mysql -uroot <<MYSQLSCRIPT
 CREATE DATABASE IF NOT EXISTS ${clean_site};
@@ -569,8 +579,59 @@ update() {
 #------------------------------------------------------------------------------
 delete() {
 	del_vhost=$1
-	check_installed $del_vhost
-	echo "deleting ${del_vhost}"
+	clean_site=${del_vhost//[^a-zA-Z0-9]/}
+	check_installed $clean_site
+	if [ $? -ne 150 ]; then
+		# $clean_site doesn't exists. nothing to delete
+		echo "${clean_site} doesn't exists. I have nothing to delete. Exiting now."
+		[ $CLEANUP == "yes" ] && [ -d $TMPDIR ] && rm -rf $TMPDIR
+		rm -f $PIDFILE
+		exit $E_NEWSITEEXISTS
+	fi
+
+	echo -e "${RED}This will permanently delete ${clean_site}"
+	read -p "do you really wish to continue? [y/n] " -n 1 -r; echo -e ${COLOR_RESET}
+	if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+		[ $CLEANUP == "yes" ] && [ -d $TMPDIR ] && rm -rf $TMPDIR
+		rm -f $PIDFILE
+		exit $USERABORTED
+	else
+		# we check first for a VHOSTCONFDIR, and if we haven't set one we try other methods
+		if [ $VHOSTCONFDIR ]; then
+			echo -e "${YELLOW}Deleting ${GREEN}'${clean_site}'${YELLOW} entry from Apache.${COLOR_RESET}"
+			rm -f ${VHOSTCONFDIR}/wpm_${clean_site}.conf
+
+		# no VHOSTCONFDIR, let's check for a vhost-conf file. If we have it we can proceed
+		elif [ $VHOSTCONF ]; then
+			echo -e "${YELLOW}Deleting ${GREEN}'${clean_site}'${YELLOW} entry from ${VHOSTCONF}.${COLOR_RESET}"
+			TMPVHOSTCONF=${TMPDIR}/$(basename ${VHOSTCONF}).$(date +%Y%m%d_%H%M)
+			# let's back it up first and then we can work on a copy
+			cp -v ${VHOSTCONF} $(dirname ${VHOSTCONF})/$(basename ${VHOSTCONF}).$(date +%Y%m%d_%H%M)
+			sed -i "/# BEGIN WP_MANAGER VHOST ${clean_site}/,/# END WP_MANAGER VHOST ${clean_site}/d" ${VHOSTCONF}
+		fi
+		# TODO: implement delete routine based on httpd.conf file
+
+		echo -e "${YELLOW}Deleting files in ${GREEN}'${WEBSERVER}/${clean_site}'${COLOR_RESET}"
+		rm -rf ${WEBSERVER}/${clean_site}
+
+		echo -e "${YELLOW}Deleting database entry for ${GREEN}'${clean_site}'${COLOR_RESET}"
+		if [ -r "/root/.my.cnf" ]; then
+			mysql -uroot <<MYSQLSCRIPT
+DROP DATABASE IF EXISTS ${clean_site};
+FLUSH PRIVILEGES;
+MYSQLSCRIPT
+		else
+			echo "Please enter the password for mysql root user:"
+			read mysqlrootpass
+			mysql -uroot -p${mysqlrootpass} <<MYSQLSCRIPT
+DROP DATABASE IF EXISTS ${clean_site};
+FLUSH PRIVILEGES;
+MYSQLSCRIPT
+		fi
+
+	fi
+	echo -e "${GREEN}Successfully deleted ${clean_site} from the system."
+	echo -e "For the change to take effect you should restart your httpd server.${COLOR_RESET}"
 }
 
 #------------------------------------------------------------------------------
@@ -638,6 +699,7 @@ else
 					break
 					;;
 				d ) check_setup
+					mktmp
 					delete ${OPTARG}
 					break
 					;;
