@@ -18,43 +18,60 @@ As of now, the structure of the script is in place, its basic functionalities ar
 Usage
 -------
 
-Using **wp_manager.sh** is very simple, the first step is to generate a config file, by default the script will generate the file in the same directory, but you can change this behaviour by searching and commenting this line:
-`SCRIPTCONFIG=${SCRIPTCONFIG:-"$(dirname $0)/$(basename $0 .sh).conf"}`
-and uncommenting this other line:
-`#SCRIPTCONFIG=${SCRIPTCONFIG:-"/etc/$(basename $0 .sh).conf"}`
-which will instruct the script to look for a config file inside the /etc directory.
-now to generate the config file issue the command:
-`wp_manager.sh -w`
+Using **wp_manager.sh** is very simple, the first step is to generate a config file. By default the script will generate the file in the same directory, but you can change this behaviour by searching for those 2 lines:
+
+    SCRIPTCONFIG=${SCRIPTCONFIG:-"$(dirname $0)/$(basename $0 .sh).conf"}
+    #SCRIPTCONFIG=${SCRIPTCONFIG:-"/etc/$(basename $0 .sh).conf"}
+
+and leaving only the second one uncommented to instruct the script to look for a config file inside the /etc directory.
+Now to generate the config file issue the command:
+
+	wp_manager.sh -w
+
 and the script will tell you to go and edit it to suit your system configuration.
 
 Once you're done, you'll want to populate your cache directory with all the WordPress goodies that you need, so go ahead and issue:
-`wp_manager.sh -s`
+
+    wp_manager.sh -s
+
 and after a while the script will tell you that your base directory is ready and up to date.
 Usually you'll need to perform this action only the first time and then just update your cache, unless you decide to change the destination of your `$BASEDIR` option, or if you delete your cache directory and need to build it again.
 
 To update your cache directory issue:
-`wp_manager.sh -b`
+
+	wp_manager.sh -b
+
 and the script will take care of everything. I recommend running this command before installing or updating your WordPress installations, to use the latest codebase available
 
 Now for the fun part, when you want to install a new website issue
-`wp_manager.sh -i <sitename>`
+
+	wp_manager.sh -i <sitename>
+
 and the script will create a new entry in your apache configuration, a new database and install all the WordPress related files and plugins for you, you'll just have to restart apache and update your /etc/hosts file on the clients that will be accessing your server. That's it.
 
 If you need to list the currently available sites you can use
-`wp_manager.sh -l`
+
+	wp_manager.sh -l
+
 to check on them. In the future I may add a few more info to be displayed.
 
 You'll want to keep your local WordPress installs up to date, so you'll need to run:
-`wp_manager.sh -u`
+
+	wp_manager.sh -u
+
 and the script will copy the latest modifications to every site that you setup, without touching files that you may have added like themes or plugins.
 It is recommended to run this function after you've updated the base directory.
 
 When you're done with a particular website and you want to delete it, run:
-`wp_manager.sh -d <sitename>`
+
+	wp_manager.sh -d <sitename>
+
 you'll be asked to confirm this option and after a few seconds a message will tell you that the site is gone, be careful because there's no turning back and this option will delete **everything** inside that VirtualHost DocRoot.
 
 If you don't remember what an option does or simply how to do something use
-`wp_manager.sh -h`
+
+	wp_manager.sh -h
+
 and the script will give you a brief help text
 
 Running the script with no options will give you a overview of the current setup as well as a setup check for errors in your configuration file.
