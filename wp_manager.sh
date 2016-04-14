@@ -638,10 +638,6 @@ MYSQLSCRIPT
 #							### Ready? Set, GO!! ###
 #------------------------------------------------------------------------------
 
-# Exit the script on errors:
-#set -e
-trap 'echo "$0 FAILED at line ${LINENO}" | tee -s /var/log/$(basename $0 .sh)_error.log' ERR
-
 # Only root should run this script
 if [[ $EUID -ne 0 ]]; then
 	echo -e "${RED}Only root can run this script. Exiting${COLOR_RESET}"
