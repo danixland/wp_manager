@@ -98,6 +98,26 @@ HOST=${HOST:-"localhost"}
 # Shall we clean the tmpdir after every use?
 CLEANUP=${CLEANUP:-"yes"}
 
+# Developer plugins we want installed on our VHosts
+WP_PLUGINS=${WP_PLUGINS:-(
+	"developer"
+	"debug-bar"
+	"debug-bar-console"
+	"debug-bar-cron"
+	"debug-bar-extender"
+	"rewrite-rules-inspector"
+	"log-deprecated-notices"
+	"monster-widget"
+	"user-switching"
+	"piglatin"
+	"rtl-tester"
+	"regenerate-thumbnails"
+	"simply-show-ids"
+	"theme-test-drive"
+	"theme-check"
+	"wordpress-importer"
+)}
+
 } # end set_defaults, do not change this line.
 
 set_defaults
@@ -132,25 +152,6 @@ else
 	[ -n "$(/bin/ls -A ${VHOSTCONFDIR}/wpm_*.conf 2>/dev/null)" ] && VHOSTLIST=$(/bin/ls -A ${VHOSTCONFDIR}/wpm_*.conf 2>/dev/null)
 fi
 
-# Developer plugins we want installed on our VHosts
-WP_PLUGINS=(
-	"developer"
-	"debug-bar"
-	"debug-bar-console"
-	"debug-bar-cron"
-	"debug-bar-extender"
-	"rewrite-rules-inspector"
-	"log-deprecated-notices"
-	"monster-widget"
-	"user-switching"
-	"piglatin"
-	"rtl-tester"
-	"regenerate-thumbnails"
-	"simply-show-ids"
-	"theme-test-drive"
-	"theme-check"
-	"wordpress-importer"
-)
 
 # WordPress svn address
 WORDPRESS=${WORDPRESS:-"https://core.svn.wordpress.org/trunk/"}
@@ -220,6 +221,7 @@ generateconf() {
 	sed  -n '/^set_defaults() {/,/^} # end set_defaults, do not change this line./p' $0 \
 		| grep -v set_defaults \
 		| sed -e 's/^\([^=]*\)=\${\1:-\([^}]*\)}/\1=\2/' \
+		| sed -e 's/^\(WP_PLUGINS\)=\${\1:-\([^=]*\)/\1=\2/' -e 's/}$//' \
 		> ${SCRIPTCONFIG}
 	if [ -r ${SCRIPTCONFIG} ]; then
 		echo -e "${GREEN}${SCRIPTCONFIG} written correctly. Exiting now."
