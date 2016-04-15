@@ -356,7 +356,7 @@ base_update() {
 	# test last update - ideally this options needs to run once a day
 	if [ -r ${directory}/lastupdate ]; then
 		lastup=$(cat ${directory}/lastupdate)
-		today=$(date $(date +"%Y-%m-%d") +%s)
+		today=$(date -d $(date +"%Y-%m-%d") +%s)
 		if [ $today -eq $lastup ]; then
 			echo -e "${YELLOW}It appears that you updated less than 1 day ago.${BLUE}\n"
 			read -p "do you really wish to continue the update? [y/n] " -n 1 -r; echo -e ${COLOR_RESET}
