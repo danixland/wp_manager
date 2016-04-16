@@ -1,0 +1,82 @@
+# helper function that checks for already installed VHosts
+check_installed() {
+    new_site=$1
+    if [ $VHOSTCONFDIR ]; then
+        checkstring="\bwpm_${new_site}.conf\b"
+    else
+        checkstring="\b${new_site}\b"
+    fi
+    echo "${VHOSTLIST}" | grep -q "${checkstring}"
+    if [[ $? == 0 || -d ${WEBSERVER}/${new_site} ]]; then
+        # return a special exit code to let other functions know that the site already exists
+        return 150
+    fi
+}
+
+# Create tmp directory
+mktmp() {
+    # check for tmpdir and delete it if existing, then recreate it
+    if [ -d ${TMPDIR} ]; then
+        rm -rf $TMPDIR
+        mkdir $TMPDIR
+    else
+        mkdir $TMPDIR
+    fi
+}
+
+# Helper that performs a Setup Check
+check_setup() {
+    WARNINGMSG="WARNING - NO CONFIGURATION FILE FOUND.\n"
+    WARNINGMSG+="It is advisable to create a config file running '$(basename $0) -w'\n"
+    WARNINGMSG+="and edit it to suit your current server configuration or you won't"
+    WARNINGMSG+="be able to perform most operations with this script."
+
+    ERRORMSG=""
+
+    # we need to check that svn is installed before anything else
+    if [ ! -x ${SVN} ]; then
+        ERRORMSG+="\"${SVN}\" executable not found, check your \$SVN setting."
+    fi
+    # check the DocRoot
+    if [ ! -d ${WEBSERVER} ]; then
+        ERRORMSG+="\n\"${WEBSERVER}\" is not a directory, check your \$WEBSERVER setting."
+    fi
+    # Apache conf file check
+    if [ ! -r ${APACHECONF} ]; then
+        ERRORMSG+="\nCannot read \"${APACHECONF}\", check your \$APACHECONF setting."
+    else
+        # check the VHosts conf dir first
+        if [[ ${VHOSTCONFDIR} ]]; then
+            if [ ! -d ${VHOSTCONFDIR} ]; then
+                ERRORMSG+="\n\"${VHOSTCONFDIR}\" is not a directory, check your \$VHOSTCONFDIR setting."
+            fi
+        else
+            # finally check the VHosts file
+            if [[ ${VHOSTCONF} ]]; then
+                if [ ! -r ${VHOSTCONF} ]; then
+                    ERRORMSG+="\n\"${VHOSTCONF}\" can't be read, check your \$VHOSTCONF setting."
+                fi
+            fi
+        fi
+    fi
+    # check if we have a username and password, or we won't be able to install everything
+    if [[ -z $DBUSER || -z $DBPASS ]]; then
+        ERRORMSG+="\n\"\$DBUSER\" or \"\$DBPASS\" are not set. This script won't be able to install new VHosts without those settings."
+    fi
+
+    [ ! -r ${SCRIPTCONFIG} ] &&  echo -e "${YELLOW}${WARNINGMSG}${COLOR_RESET}"
+
+    if [[ $ERRORMSG != "" ]]; then
+        echo -e ${RED}
+        echo -e "CONFIGURATION ERRORS:"
+        echo -e $ERRORMSG
+        echo -e ${COLOR_RESET}
+        rm -f $PIDFILE
+        exit $E_SETTINGSERRORS
+    else
+        echo -e ${GREEN}
+        echo -e "SETUP CHECK PASSED."
+        echo -e ${COLOR_RESET}
+    fi
+}
+

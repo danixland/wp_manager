@@ -1,0 +1,100 @@
+#------------------------------------------------------------------------------
+#                           ### Ready? Set, GO!! ###
+#------------------------------------------------------------------------------
+
+# Only root should run this script
+if [[ $EUID -ne 0 ]]; then
+    echo -e "${RED}Only root can run this script. Exiting${COLOR_RESET}"
+    exit $E_ONLYROOTALLOWED
+fi
+
+# Make sure the PID file is removed when we kill the process
+trap 'rm -f $PIDFILE; exit 1' TERM INT
+
+# check $PIDFILE and abort if one exists
+if [ -e $PIDFILE ]; then
+    echo "Another instance ($(cat $PIDFILE)) still running?"
+    echo "If you are sure that no other instance is running, delete the lockfile"
+    echo "'${PIDFILE}' and re-start this script."
+    echo "Aborting now..."
+    exit $E_MULTIPLEINSTANCES
+else
+    echo $$ > $PIDFILE
+
+
+    # Parse the commandline options:
+    if (( $# == 0 )); then
+        echo -e "${GREEN}CURRENT CONFIGURATION:${COLOR_RESET} \n"
+        echo -e "Webserver\t\t = ${GREEN}$WEBSERVER${COLOR_RESET}"
+        echo -e "Apache config\t\t = ${GREEN}$APACHECONF${COLOR_RESET}"
+        echo -e "Apache user:group\t = ${GREEN}${APACHEUSER}:${APACHEGROUP}${COLOR_RESET}"
+        echo -e "Server Admin\t\t = ${GREEN}$SERVERADMIN${COLOR_RESET}"
+        echo -e "vhost config Directory\t = ${GREEN}$VHOSTCONFDIR${COLOR_RESET}"
+        echo -e "vhost config file\t = ${GREEN}$VHOSTCONF${COLOR_RESET}"
+        echo -e "Base Directory\t\t = ${GREEN}$BASEDIR${COLOR_RESET}"
+        echo -e "tmp Directory\t\t = ${GREEN}$TMPDIR${COLOR_RESET}"
+        echo -e "Username\t\t = ${GREEN}$DBUSER${COLOR_RESET}"
+        echo -e "Password\t\t = ${GREEN}$DBPASS${COLOR_RESET}"
+        echo -e "Host\t\t\t = ${GREEN}$HOST${COLOR_RESET}"
+        check_setup
+        rm -f $PIDFILE; exit $STATUSDISPLAY
+    else
+        while getopts "i:d:bslhuw" Option
+        do
+            case $Option in
+                b ) check_setup
+                    mktmp
+                    base_update
+                    break
+                    ;;
+                i ) check_setup
+                    mktmp
+                    install_new ${OPTARG}
+                    break
+                    ;;
+                d ) check_setup
+                    mktmp
+                    delete ${OPTARG}
+                    break
+                    ;;
+                u ) check_setup
+                    mktmp
+                    update
+                    break
+                    ;;
+                s ) check_setup
+                    mktmp
+                    base_setup
+                    break
+                    ;;
+                l ) list_vhosts
+                    break
+                    ;;
+                w ) generateconf
+                    break
+                    ;;
+                h ) usage
+                    break
+                    ;;
+                * ) usage
+                    break
+                    ;; # default behaviour
+            esac
+        done
+
+        # End of option parsing.
+        shift $(($OPTIND - 1))
+
+        #  $1 now references the first non option item supplied on the command line
+        #  if one exists.
+        # ---------------------------------------------------------------------------
+    fi
+
+fi
+
+if [ $CLEANUP == "yes" ]; then
+    [ -d $TMPDIR ] && rm -rf $TMPDIR
+fi
+rm -f $PIDFILE
+exit 0
+

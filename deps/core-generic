@@ -1,0 +1,70 @@
+#------------------------------------------------------------------------------
+#                           ### Display help text ###
+#------------------------------------------------------------------------------
+# USAGE: $0 -h
+usage() {
+    echo "USAGE:"
+    echo `basename $0` "-h"
+    echo "this shows the help and exits"; echo
+    echo `basename $0` "-w"
+    echo "Generate a config file for this script."; echo
+    echo `basename $0` "-s"
+    echo "Setup the local cache, downloads WordPress and the basic plugins."; echo
+    echo `basename $0` "-b"
+    echo "updates the local cached WordPress codebase and plugins"; echo
+    echo `basename $0` "-l"
+    echo "Lists all VirtualHosts created by this script."; echo
+    echo `basename $0` "-i <new directory name>"
+    echo "install the VHost 'new directory name'"; echo
+    echo `basename $0` "-d <directory name>"
+    echo "Deletes the VHost 'directory name' and all of its data"; echo
+    echo `basename $0` "-u"
+    echo "updates all VHosts created by this script."; echo
+    rm -f $PIDFILE
+    exit $E_NOARGS
+}
+
+#------------------------------------------------------------------------------
+#                           ### Generate config file ###
+#------------------------------------------------------------------------------
+# USAGE: $0 -w
+generateconf() {
+    if [ -r $SCRIPTCONFIG ]; then
+        echo "Backing up current '${SCRIPTCONFIG}' to ${SCRIPTCONFIG}.$(date +%Y%m%d_%H%M)."
+        mv -f ${SCRIPTCONFIG} ${SCRIPTCONFIG}.$(date +%Y%m%d_%H%M)
+    fi
+    echo "Writing '${SCRIPTCONFIG}'."
+    sed  -n '/^set_defaults() {/,/^} # end set_defaults, do not change this line./p' $0 \
+        | grep -v set_defaults \
+        | sed -e 's/^\([^=]*\)=\${\1:-\([^}]*\)}/\1=\2/' \
+        | sed -e 's/^\(WP_PLUGINS\)=\${\1:-\([^=]*\)/\1=\2/' -e 's/}$//' \
+        > ${SCRIPTCONFIG}
+    if [ -r ${SCRIPTCONFIG} ]; then
+        echo -e "${GREEN}${SCRIPTCONFIG} written correctly. Exiting now."
+        echo -e ${COLOR_RESET}
+        rm -f $PIDFILE
+        exit 0
+    else
+        echo -e ${RED}
+        echo "Could not write '${SCRIPTCONFIG}'. Exiting."
+        echo -e ${COLOR_RESET}
+        rm -f $PIDFILE
+        exit $E_WRITECONFERR
+    fi
+}
+
+#------------------------------------------------------------------------------
+#                           ### List our VHosts ###
+#------------------------------------------------------------------------------
+# USAGE: $0 -l
+list_vhosts() {
+    if [ -n "$VHOSTLIST" ]; then
+        VHOSTCOUNT=$(echo ${VHOSTLIST} | wc -w)
+        echo -e "This script has generated ${VHOSTCOUNT} Virtual Hosts.\n"
+        echo $VHOSTLIST
+    else
+        echo "no vhosts yet. Create one first"
+    fi
+}
+
+

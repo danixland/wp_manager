@@ -1,0 +1,126 @@
+#------------------------------------------------------------------------------
+#                           ### Install new VHost ###
+#------------------------------------------------------------------------------
+# USAGE: $0 -i new_site
+install_new() {
+    directory=$(dirname ${WEBSERVER})/${BASEDIR}
+    new_site=$1
+    clean_site=${new_site//[^a-zA-Z0-9]/}
+    check_installed $clean_site
+    if [ $? -eq 150 ]; then
+        # $clean_site already exists
+        echo "${clean_site} already exists. Exiting now."
+        [ $CLEANUP == "yes" ] && [ -d $TMPDIR ] && rm -rf $TMPDIR
+        rm -f $PIDFILE
+        exit $E_NEWSITEEXISTS
+    fi
+    echo "installing $clean_site"
+    # we check first for a VHOSTCONFDIR, and if we haven't set one we try other methods
+    if [ $VHOSTCONFDIR ]; then
+        VHOSTFILE="wpm_${clean_site}.conf"
+        cat >> ${VHOSTCONFDIR}/${VHOSTFILE} <<EOVH
+# BEGIN WP_MANAGER VHOST ${clean_site}
+<VirtualHost ${VHOSTLISTEN}>
+    ServerAdmin ${SERVERADMIN}
+    DocumentRoot "${WEBSERVER}/${clean_site}"
+    ServerName ${clean_site}
+    ErrorLog "/var/log/httpd/${clean_site}-error_log"
+    CustomLog "/var/log/httpd/${clean_site}-access_log" common
+    <Directory /var/www/htdocs/${clean_site}>
+        DirectoryIndex index.php
+        AllowOverride All
+        Order Allow,deny
+        Allow from all
+        Require all granted
+    </Directory>
+</VirtualHost>
+# END WP_MANAGER VHOST ${clean_site}
+
+EOVH
+
+    # so, do we have a vhost-conf file? If yes copy it to our tmp directory and edit
+    # it there before putting it back in its place.
+    elif [ $VHOSTCONF ]; then
+        TMPVHOSTCONF=${TMPDIR}/$(basename ${VHOSTCONF}).$(date +%Y%m%d_%H%M)
+        cp ${VHOSTCONF} $TMPVHOSTCONF
+        cat >> ${TMPVHOSTCONF} <<EOVH
+# BEGIN WP_MANAGER VHOST ${clean_site}
+<VirtualHost ${VHOSTLISTEN}>
+    ServerAdmin ${SERVERADMIN}
+    DocumentRoot "${WEBSERVER}/${clean_site}"
+    ServerName ${clean_site}
+    ErrorLog "/var/log/httpd/${clean_site}-error_log"
+    CustomLog "/var/log/httpd/${clean_site}-access_log" common
+    <Directory /var/www/htdocs/${clean_site}>
+        DirectoryIndex index.php
+        AllowOverride All
+        Order Allow,deny
+        Allow from all
+        Require all granted
+    </Directory>
+</VirtualHost>
+# END WP_MANAGER VHOST ${clean_site}
+
+EOVH
+        # let's put the file back in its place but we can make a backup first
+        echo "Backing up $(basename ${VHOSTCONF}) to $(basename ${VHOSTCONF}).$(date +%Y%m%d_%H%M)"
+        mv ${VHOSTCONF} ${VHOSTCONF}.$(date +%Y%m%d_%H%M)
+        cp ${TMPVHOSTCONF} ${VHOSTCONF}
+        [ $? -eq 0 ] && echo "${VHOSTCONF} modified successfully"
+
+    # We don't have a vhosts config directory nor a monolitic vhost config file, falling back to 
+    # modifying the main httpd.conf file
+    # WARNING - not yet implemented
+    else
+        echo -e "${RED}using only httpd.conf is not yet working.${COLOR_RESET}"
+        exit $E_NOVHOSTCONF
+    fi
+
+    echo "Adding MYSQL database"
+    if [ -r "/root/.my.cnf" ]; then
+        mysql -uroot <<MYSQLSCRIPT
+CREATE DATABASE IF NOT EXISTS ${clean_site};
+GRANT ALL PRIVILEGES ON ${clean_site}.* TO '${DBUSER}'@'localhost' IDENTIFIED BY '${DBPASS}';
+FLUSH PRIVILEGES;
+MYSQLSCRIPT
+    else
+        echo "Please enter the password for mysql root user:"
+        read mysqlrootpass
+        mysql -uroot -p${mysqlrootpass} <<MYSQLSCRIPT
+CREATE DATABASE IF NOT EXISTS ${clean_site};
+GRANT ALL PRIVILEGES ON ${clean_site}.* TO '${DBUSER}'@'localhost' IDENTIFIED BY '${DBPASS}';
+FLUSH PRIVILEGES;
+MYSQLSCRIPT
+    fi
+    [ $? -eq 0 ] && echo "database and user created successfully"
+
+    echo "installing WordPress"
+    mkdir -p ${WEBSERVER}/${clean_site}
+    mkdir -p ${TMPDIR}/PLUGINS
+    echo -e "${BLUE}Exporting WordPress files${COLOR_RESET}"
+    ${SVN} export ${directory}/WP ${TMPDIR}/WP
+    echo -e "${BLUE}Exporting WordPress plugins${COLOR_RESET}"
+    for plugin_dir in $(/bin/ls ${directory}/PLUGINS); do
+        echo -e "${BLUE}Exporting ${GREEN}${plugin_dir}${COLOR_RESET}"
+        ${SVN} export ${directory}/PLUGINS/${plugin_dir} ${TMPDIR}/PLUGINS/${plugin_dir}
+    done
+
+    echo -e "${BLUE}installing WordPress files and plugins to ${GREEN}${clean_site}${COLOR_RESET}"
+    cp -R ${TMPDIR}/WP/* ${WEBSERVER}/${clean_site}/
+    cp -R ${TMPDIR}/PLUGINS/* ${WEBSERVER}/${clean_site}/wp-content/plugins/
+    # final edit to wp-config.php before installing it to $clean_site
+    cp ${directory}/wp-config.php ${TMPDIR}/wp-config.php
+    sed -i "s/database_name_here/${clean_site}/" ${TMPDIR}/wp-config.php
+    cp ${TMPDIR}/wp-config.php ${WEBSERVER}/${clean_site}/wp-config.php
+
+    echo -e "${BLUE}Changing owner of ${GREEN}${clean_site}${BLUE} to ${APACHEUSER}:${APACHEGROUP} ${COLOR_RESET}"
+    chown -R ${APACHEUSER}:${APACHEGROUP} ${WEBSERVER}/${clean_site}
+
+    echo -e "${GREEN}A new website has been created and is awaiting for you."
+    echo -e "It's now time to restart your apache webserver and enjoy WordPress at 'http://${clean_site}'.\n"
+    echo -e "${YELLOW}Don't forget to update your 'hosts' file on every client that is going to"
+    echo "access this server on your lan."
+    echo -e "${BLUE}You can use this command to modify the file /etc/hosts on your linux client:"
+    echo -e "${GREEN}echo -e \"\$(hostname -i)\\\t\\\t${clean_site}\" >> /etc/hosts${COLOR_RESET}"
+}
+

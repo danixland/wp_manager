@@ -1,0 +1,114 @@
+#------------------------------------------------------------------------------
+#                           ### Setup base files ###
+#------------------------------------------------------------------------------
+# USAGE: $0 -s
+base_setup() {
+    directory=$(dirname ${WEBSERVER})/${BASEDIR}
+    echo -e "${BLUE}installing base files inside ${GREEN}'${directory}'"
+    if [ ! -d $directory ]; then
+        echo -e "${BLUE}creating base directory '${directory}'"
+        mkdir -p $directory
+    else
+        echo -e "${YELLOW}${directory} already exists."
+        echo -e "If you're trying to update your base directory you can run:"
+        echo -e "${GREEN}'$(basename $0) -b'${YELLOW} without needing to rebuild.${BLUE}\n"
+        read -p "do you really wish to rebuild ${directory}? [y/n] " -n 1 -r; echo -e ${COLOR_RESET}
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            [ $CLEANUP == "yes" ] && [ -d $TMPDIR ] && rm -rf $TMPDIR
+            rm -f $PIDFILE
+            exit $USERABORTED
+        else
+            echo -e "${BLUE}rebuilding base directory ${GREEN}'${directory}'${COLOR_RESET}"
+            rm -rf $directory && mkdir $directory
+        fi
+    fi
+    # create patches directory
+    mkdir ${directory}/patches
+    # echo today's date in unix timestamp (no seconds)
+    touch ${directory}/lastupdate && echo $(date -d $(date +"%Y-%m-%d") +%s) > ${directory}/lastupdate
+    # let's get salty! we'll need those keys in a minute
+    echo -e "${BLUE}Downloading secret-keys from WordPress.org API${COLOR_RESET}"
+    wget -O ${TMPDIR}/wp.keys https://api.wordpress.org/secret-key/1.1/salt/
+    echo -e "${BLUE}Downloading WordPress from svn${COLOR_RESET}"
+    ${SVN} co ${WORDPRESS} ${directory}/WP
+    echo -e "${BLUE}creating base wp-config.php${COLOR_RESET}"
+    cp ${directory}/WP/wp-config-sample.php ${TMPDIR}/wp-config.php
+    # substitute username and password with our settings
+    sed -i "s/username_here/${DBUSER}/" ${TMPDIR}/wp-config.php
+    sed -i "s/password_here/${DBPASS}/" ${TMPDIR}/wp-config.php
+    # copy the secret keys into our file
+    sed -i "/#@-/r ${TMPDIR}/wp.keys" ${TMPDIR}/wp-config.php
+    sed -i "/#@+/,/#@-/d" ${TMPDIR}/wp-config.php
+    # activate WP_DEBUG and SAVEQUERIES
+    sed -i "s/false)/true)/" ${TMPDIR}/wp-config.php
+    sed -i "/define('WP_DEBUG'/ a define( 'SAVEQUERIES', true );" ${TMPDIR}/wp-config.php
+    # put the wp-config.php file back in its place
+    cp ${TMPDIR}/wp-config.php ${directory}/wp-config.php
+    # download every plugin we need from svn inside PLUGINS directory
+    echo -e "${BLUE}Downloading plugins${COLOR_RESET}"
+    [ ! -d ${directory} ] && mkdir ${directory}/PLUGINS
+    for plugin in "${WP_PLUGINS[@]}"; do
+        echo -e "${BLUE}Downloading ${GREEN}${plugin}${COLOR_RESET}"
+        ${SVN} co https://plugins.svn.wordpress.org/${plugin}/trunk ${directory}/PLUGINS/${plugin}
+    done
+    echo -e "\n${GREEN}All base files have been installed successfully. Existing.${COLOR_RESET}"
+}
+
+#------------------------------------------------------------------------------
+#                           ### Update base files ###
+#------------------------------------------------------------------------------
+# USAGE: $0 -b
+base_update() {
+    directory=$(dirname ${WEBSERVER})/${BASEDIR}
+    # test last update - ideally this options needs to run once a day
+    if [ -r ${directory}/lastupdate ]; then
+        lastup=$(cat ${directory}/lastupdate)
+        today=$(date -d $(date +"%Y-%m-%d") +%s)
+        if [ $today -eq $lastup ]; then
+            echo -e "${YELLOW}It appears that you updated less than 1 day ago.${BLUE}\n"
+            read -p "do you really wish to continue the update? [y/n] " -n 1 -r; echo -e ${COLOR_RESET}
+            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                [ $CLEANUP == "yes" ] && [ -d $TMPDIR ] && rm -rf $TMPDIR
+                rm -f $PIDFILE
+                exit $USERABORTED
+            fi
+        fi
+    fi
+    echo -e "${BLUE}Updating base files inside ${GREEN}'${directory}'"
+    echo -e "${BLUE}Creating patch files inside ${GREEN}'${directory}/patches/'${COLOR_RESET}"
+    [ -d ${directory}/patches ] && rm ${directory}/patches/*
+    # now we have a clean old copy of WordPress
+    ${SVN} export ${directory}/WP ${TMPDIR}/WP.old
+    # and a clean new copy here
+    ${SVN} up ${directory}/WP
+    ${SVN} export ${directory}/WP ${TMPDIR}/WP.new
+    # let's create some patch files containing the name of all the modified files 
+    # between the two versions of WP
+
+# Find files existing only in one of the two versions, either new or old
+#   diff -qr WP.old WP.new/ |grep Only | sed -e 's/Only in //' -e 's/: /\//'
+    cd $TMPDIR
+    # Get those files that needs to be deleted with: 
+    diff -qr WP.old WP.new/ |grep Only |grep -e old | sed -e 's/Only in //' -e 's/: /\//' > ${directory}/patches/wp-delete.txt
+    # And files that need to be added with:
+    diff -qr WP.old WP.new/ |grep Only |grep -e new | sed -e 's/Only in //' -e 's/: /\//' >> wp-add-update.txt
+    # And finally we can get those files that need to be updated with:
+    diff -qr WP.old WP.new/ | cut -d " " -f 4 |grep WP. >> wp-add-update.txt
+    sed 's/WP.new\///' < wp-add-update.txt > wp-patch.txt
+    mkdir -p ${directory}/patches/wp-add
+    mods=$(cat ${TMPDIR}/wp-patch.txt)
+    cd WP.new
+    for i in $mods;do
+        cp --parents $i ${directory}/patches/wp-add/
+    done
+    cd $PWD
+
+    echo -e "${BLUE}Updating plugins${COLOR_RESET}"
+    for plugin_dir in $(/bin/ls ${directory}/PLUGINS); do
+        echo -e "${BLUE}Updating ${GREEN}${plugin_dir}${COLOR_RESET}"
+        ${SVN} up ${directory}/PLUGINS/${plugin_dir}
+    done
+    echo $(date -d $(date +"%Y-%m-%d") +%s) > ${directory}/lastupdate
+    echo -e "\n${GREEN}All base files have been updated successfully. Existing.${COLOR_RESET}"
+}
+

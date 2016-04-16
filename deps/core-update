@@ -1,0 +1,31 @@
+#------------------------------------------------------------------------------
+#                           ### Update VHosts ###
+#------------------------------------------------------------------------------
+# USAGE: $0 -u
+update() {
+    directory=$(dirname ${WEBSERVER})/${BASEDIR}
+    todelete="${directory}/patches/wp-delete.txt"
+    VHOSTS=$(echo ${VHOSTLIST})
+    if [ -n "$VHOSTS" ]; then
+        for site in $VHOSTS; do
+            echo -e "${BLUE}Updating WordPress install on ${GREEN}${WEBSERVER}/$site${COLOR_RESET}"
+            cd ${WEBSERVER}/$site
+            if [ -s $todelete ]; then
+                echo -e "${BLUE}Deleting obsolete files${COLOR_RESET}"
+                for file in $(cat $todelete); do
+                    rm $file
+                done
+            fi
+            echo -e "${BLUE}Updating WordPress files${COLOR_RESET}"
+            cp -R ${directory}/patches/wp-add/* .
+        done
+    else
+        echo -e "${YELLOW}no VHosts to update, Exiting.${COLOR_RESET}"
+        cd $PWD
+        rm -f $PIDFILE
+        exit $E_NOVHOSTSUPDATABLE
+    fi
+    cd $PWD
+    echo -e "${GREEN}aLL VHosts are up to date now.${COLOR_RESET}"
+}
+

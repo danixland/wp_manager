@@ -1,0 +1,158 @@
+#! /bin/bash
+
+# Version 0.7.5
+
+#------------------------------------------------------------------------------
+#                               wp_manager.sh
+#               by Danilo 'danix' Macri <danix@danixland.net>
+#------------------------------------------------------------------------------
+
+#------------------------------------------------------------------------------
+#                               ### SCRIPT COLORS ###
+#------------------------------------------------------------------------------
+RED='\E[31;40m'
+GREEN='\E[32;40m'
+YELLOW='\E[33;40m'
+BLUE='\E[34;40m'
+COLOR_RESET=$(tput sgr0)
+
+#------------------------------------------------------------------------------
+#                               ### EXIT STATUSES ###
+#------------------------------------------------------------------------------
+STATUSDISPLAY=160
+
+E_NOARGS=170
+E_WRITECONFERR=171
+E_MULTIPLEINSTANCES=172
+E_MULTIPLESWITCHES=173
+E_SETTINGSERRORS=174
+E_NOVHOSTCONF=175
+E_NEWSITEEXISTS=176
+E_NEWSITEDIREXISTS=177
+E_NOVHOSTSUPDATABLE=178
+E_ONLYROOTALLOWED=179
+
+#------------------------------------------------------------------------------
+#                               ### OPTIONS ###
+#------------------------------------------------------------------------------
+
+# Script defaults - edits should go into the config file
+set_defaults() {
+# Binaries to use:
+SVN=${SVN:-"/usr/bin/svn"}
+
+# Set this variable to your server's DocumentRoot.
+WEBSERVER=${WEBSERVER:-"/var/www/htdocs"}
+
+# The admin email for your server
+SERVERADMIN=${SERVERADMIN:-"admin@some.url"}
+
+# The apache config file
+APACHECONF=${APACHECONF:-"/etc/httpd/httpd.conf"}
+
+# All Files inside the DocumentRoot for the VHosts will be owned
+# by this user/group, so it is advisable to make your usual user
+# part of the $APACHEGROUP to be able to modify files in the VHosts
+# The server user under which the apache executable is running
+APACHEUSER=${APACHEUSER:-"apache"}
+# The server group under which the apache executable is running
+APACHEGROUP=${APACHEGROUP:-"apache"}
+
+# THE VIRTUAL HOSTS CONFIG FILES.
+# The next two settings are mutually exclusive, if your distro uses the main
+# httpd.conf file to store settings about your VirtualHosts, leave both 
+# options empty.
+
+# The Virtual Hosts config directory.
+# If this option is used, it supersedes the $VHOSTCONF option so it is 
+# ok to leave that empty.
+VHOSTCONFDIR=${VHOSTCONFDIR:-"$(dirname $APACHECONF)/vhost.d"}
+# If your distro uses one single file to store the VirtualHosts
+# settings fill this parameter and leave the previous one empty.
+VHOSTCONF=${VHOSTCONF:-"$(dirname $APACHECONF)/extra/httpd-vhosts.conf"}
+
+# This is the interface where the VHost will be listening for connections.
+# All VHosts will rely on this setting using name based vhosts for our setup.
+VHOSTLISTEN=${VHOSTLISTEN:-"*:80"}
+
+# The directory containing the local svn copy of the WordPress.org
+# repository for WordPress itself as well as some other useful plugins.
+# In this directory we'll also store some template files to be installed
+# when we setup the vhost.
+# By default it's sitting in the same directory that is containing the
+# DocumentRoot, so in our case, by default will be in /var/www/.wp-base
+BASEDIR=${BASEDIR:-".wp-base"}
+
+# This is the mysql username that will be in charge of all the databases
+# created by this script
+DBUSER=${DBUSER:-""}
+
+# The password for the mysql username
+DBPASS=${DBPASS:-""}
+
+# Change this if your mysql database is on a different server than the one
+# where Apache is running
+# WARNING - NEEDS TESTING
+HOST=${HOST:-"localhost"}
+
+# Shall we clean the tmpdir after every use?
+CLEANUP=${CLEANUP:-"yes"}
+
+# Developer plugins we want installed on our VHosts
+WP_PLUGINS=${WP_PLUGINS:-(
+    "developer"
+    "debug-bar"
+    "debug-bar-console"
+    "debug-bar-cron"
+    "debug-bar-extender"
+    "rewrite-rules-inspector"
+    "log-deprecated-notices"
+    "monster-widget"
+    "user-switching"
+    "piglatin"
+    "rtl-tester"
+    "regenerate-thumbnails"
+    "simply-show-ids"
+    "theme-test-drive"
+    "theme-check"
+    "wordpress-importer"
+)}
+
+} # end set_defaults, do not change this line.
+
+set_defaults
+
+#------------------------------------------------------------------------------
+# No need to modify anything from here on.
+#------------------------------------------------------------------------------
+
+# path to the config file. Can be relative to the script or absolute.
+# RELATIVE SCRIPTCONFIG:
+SCRIPTCONFIG=${SCRIPTCONFIG:-"$(dirname $0)/$(basename $0 .sh).conf"}
+# ABSOLUTE SCRIPTCONFIG:
+#SCRIPTCONFIG=${SCRIPTCONFIG:-"/etc/$(basename $0 .sh).conf"}
+
+# Read the configfile if it exists
+[ -f ${SCRIPTCONFIG} ] && . ${SCRIPTCONFIG}
+
+# Present Working Directory
+PWD=$(pwd)
+# Here we'll store the temporary files used during this script operation.
+TMPDIR=${TMPDIR:-"/tmp/wp_manager"}.$$
+# Let's prevent the script from running more than one instance at a time.
+PIDFILE=/var/tmp/$(basename $0 .sh).pid
+
+# This variable will hold a list of VHosts created by the script
+if [ -z "$VHOSTCONFDIR" ]; then
+    # we are using the monolitic $VHOSTCONF to pull informations about our VHosts
+    VHOSTLIST=$(grep "# BEGIN WP_MANAGER VHOST" ${VHOSTCONF} | cut -d " " -f 5)
+else
+    # we have a separate directory 
+    VHOSTLIST=""
+    [ -n "$(/bin/ls -A ${VHOSTCONFDIR}/wpm_*.conf 2>/dev/null)" ] && VHOSTLIST=$(/bin/ls -A ${VHOSTCONFDIR}/wpm_*.conf 2>/dev/null)
+fi
+
+
+# WordPress svn address
+WORDPRESS=${WORDPRESS:-"https://core.svn.wordpress.org/trunk/"}
+
