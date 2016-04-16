@@ -1,6 +1,6 @@
 #! /bin/bash
 
-# Version 0.7.5
+# Version 0.8
 
 #------------------------------------------------------------------------------
 #                               wp_manager.sh
@@ -676,7 +676,7 @@ else
         echo -e "tmp Directory\t\t = ${GREEN}$TMPDIR${COLOR_RESET}"
         echo -e "Username\t\t = ${GREEN}$DBUSER${COLOR_RESET}"
         echo -e "Password\t\t = ${GREEN}$DBPASS${COLOR_RESET}"
-        echo -e "Host\t\t\t = ${GREEN}$HOST${COLOR_RESET} \n"
+        echo -e "Host\t\t\t = ${GREEN}$HOST${COLOR_RESET}"
         check_setup
         rm -f $PIDFILE; exit $STATUSDISPLAY
     else
