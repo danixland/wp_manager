@@ -18,9 +18,10 @@ You should have received a copy of the GNU General Public License along
 with this program; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA."
 
-    echo "`basename $0` version ${VERSION}"
+    echo "$(basename $0) version ${VERSION}"
     echo "written by ${AUTHOR}"
     echo -e "${GREEN}${license}${COLOR_RESET}"
+    echo -e "\n$(basename $0) is a bash script to install and manage WordPress VHosts in a LAMP environment\n"
     echo "USAGE: `basename $0 ` [OPTION] [vhostname]"
     echo -e "\nOptions:"
     echo -e "-h, --help\t\t\tshow this the help and exits."
@@ -32,6 +33,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
     echo -e "-i, --install-new <NEW SITE>\tInstall the VHost 'NEW SITE'"
     echo -e "-d, --delete <SITE NAME>\tDeletes the VHost 'SITE NAME' and all of its data"
     echo -e "-u, --update\t\t\tUpdates all VHosts created by this script."
+    echo -e "-k, --backup <SITE NAME>\tCreates a backup of the VHost 'SITE NAME'."
 }
 
 #------------------------------------------------------------------------------
@@ -90,6 +92,7 @@ display_config() {
     echo -e "vhost config file\t = ${GREEN}$VHOSTCONF${COLOR_RESET}"
     echo -e "Base Directory\t\t = ${GREEN}$BASEDIR${COLOR_RESET}"
     echo -e "tmp Directory\t\t = ${GREEN}$TMPDIR${COLOR_RESET}"
+    echo -e "Backup Directory\t = ${GREEN}$BACKUPDIR${COLOR_RESET}"
     echo -e "Username\t\t = ${GREEN}$DBUSER${COLOR_RESET}"
     echo -e "Password\t\t = ${GREEN}$DBPASS${COLOR_RESET}"
     echo -e "Host\t\t\t = ${GREEN}$HOST${COLOR_RESET}"

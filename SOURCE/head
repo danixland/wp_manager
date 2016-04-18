@@ -1,7 +1,6 @@
 #! /bin/bash
 
-# Version 0.8.2
-VERSION="0.8.2"
+VERSION="0.8.3"
 AUTHOR="Danilo 'danix' Macri <danix@danixland.net>"
 
 #------------------------------------------------------------------------------
@@ -35,6 +34,7 @@ E_NEWSITEDIREXISTS=177
 E_NOVHOSTSUPDATABLE=178
 E_ONLYROOTALLOWED=179
 E_UNKNOWNOPT=180
+E_BKPNOSITE=181
 
 #------------------------------------------------------------------------------
 #                               ### OPTIONS ###
@@ -44,6 +44,7 @@ E_UNKNOWNOPT=180
 set_defaults() {
 # Binaries to use:
 SVN=${SVN:-"/usr/bin/svn"}
+MYSQLDUMP=${MYSQLDUMP:-"/usr/bin/mysqldump"}
 
 # Set this variable to your server's DocumentRoot.
 WEBSERVER=${WEBSERVER:-"/var/www/htdocs"}
@@ -86,6 +87,9 @@ VHOSTLISTEN=${VHOSTLISTEN:-"*:80"}
 # By default it's sitting in the same directory that is containing the
 # DocumentRoot, so in our case, by default will be in /var/www/.wp-base
 BASEDIR=${BASEDIR:-".wp-base"}
+
+# This is the directory that will hold our backups.
+BACKUPDIR=${BACKUPDIR:-"/var/backups"}
 
 # This is the mysql username that will be in charge of all the databases
 # created by this script
@@ -132,9 +136,9 @@ set_defaults
 
 # path to the config file. Can be relative to the script or absolute.
 # RELATIVE SCRIPTCONFIG:
-SCRIPTCONFIG=${SCRIPTCONFIG:-"$(dirname $0)/$(basename $0 .sh).conf"}
+SCRIPTCONFIG=${SCRIPTCONFIG:-"$(dirname $0)/$(basename $0).conf"}
 # ABSOLUTE SCRIPTCONFIG:
-#SCRIPTCONFIG=${SCRIPTCONFIG:-"/etc/$(basename $0 .sh).conf"}
+#SCRIPTCONFIG=${SCRIPTCONFIG:-"/etc/$(basename $0).conf"}
 
 # Read the configfile if it exists
 [ -f ${SCRIPTCONFIG} ] && . ${SCRIPTCONFIG}
@@ -144,7 +148,7 @@ PWD=$(pwd)
 # Here we'll store the temporary files used during this script operation.
 TMPDIR=${TMPDIR:-"/tmp/wp_manager"}.$$
 # Let's prevent the script from running more than one instance at a time.
-PIDFILE=/var/tmp/$(basename $0 .sh).pid
+PIDFILE=/var/tmp/$(basename $0).pid
 
 # This variable will hold a list of VHosts created by the script
 if [ -z "$VHOSTCONFDIR" ]; then

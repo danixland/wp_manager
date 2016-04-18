@@ -11,6 +11,9 @@ fi
 # Make sure the PID file is removed when we kill the process
 trap 'rm -f $PIDFILE; exit 1' TERM INT
 
+# we need a backup directory in any case, so check for it and make it
+[ ! -d ${BACKUPDIR}/$(basename $0) ] && mkdir -p ${BACKUPDIR}/$(basename $0)
+
 # check $PIDFILE and abort if one exists
 if [ -e $PIDFILE ]; then
     echo "Another instance ($(cat $PIDFILE)) still running?"
@@ -46,6 +49,11 @@ else
                 -u| --update ) check_setup
                     mktmp
                     update
+                    break
+                    ;;
+                -k| --backup ) check_setup
+                    mktmp
+                    backup $2
                     break
                     ;;
                 -s| --base-setup ) check_setup

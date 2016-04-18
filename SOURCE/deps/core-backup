@@ -1,0 +1,41 @@
+#------------------------------------------------------------------------------
+#                           ### Backup selected VHost ###
+#------------------------------------------------------------------------------
+backup() {
+    bkp_vhost=$1
+    clean_site=${bkp_vhost//[^a-zA-Z0-9]/}
+    check_installed $clean_site
+    if [ $? -ne 150 ]; then
+        # $clean_site doesn't exists. nothing to backup
+        echo "${clean_site} doesn't exists. I have nothing to backup. Exiting now."
+        [ $CLEANUP == "yes" ] && [ -d $TMPDIR ] && rm -rf $TMPDIR
+        rm -f $PIDFILE
+        exit $E_BKPNOSITE
+    fi
+
+    to_backup=${clean_site}-$(date +%s)
+
+    mkdir -p ${TMPDIR}/${to_backup}/WP
+    echo -e "${GREEN}Backing up '${clean_site}'.${COLOR_RESET}"
+
+    # we check first for a VHOSTCONFDIR, and if we haven't set one we try other methods
+    if [ $VHOSTCONFDIR ]; then
+        # create directory to hold our backup
+        cp -v ${VHOSTCONFDIR}/wpm_${clean_site}.conf ${TMPDIR}/${to_backup}/
+
+    # no VHOSTCONFDIR, let's check for a vhost-conf file. If we have it we can proceed
+    elif [ $VHOSTCONF ]; then
+        sed -n "/# BEGIN WP_MANAGER VHOST ${clean_site}/,/# END WP_MANAGER VHOST ${clean_site}/p" ${VHOSTCONF} > ${TMPDIR}/${to_backup}/$(basename ${VHOSTCONF})
+    fi
+    # TODO: implement delete routine based on httpd.conf file
+
+    cp -vr ${WEBSERVER}/${clean_site}/* ${TMPDIR}/${to_backup}/WP
+    ${MYSQLDUMP} ${clean_site} > ${TMPDIR}/${to_backup}/${clean_site}.sql
+
+    echo -e "${BLUE}Compressing backup.${COLOR_RESET}"
+    cd ${TMPDIR}
+    tar cJvf ${BACKUPDIR}/$(basename $0)/${to_backup}.tar.xz ${to_backup}/
+    echo -e "${GREEN}${clean_site} backup finished successfully.${COLOR_RESET}"
+}
+# TO DO: create a backup restore function
+
