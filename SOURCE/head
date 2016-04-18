@@ -1,7 +1,7 @@
 #! /bin/bash
 
-# Version 0.8
-VERSION="0.8.1"
+# Version 0.8.2
+VERSION="0.8.2"
 AUTHOR="Danilo 'danix' Macri <danix@danixland.net>"
 
 #------------------------------------------------------------------------------

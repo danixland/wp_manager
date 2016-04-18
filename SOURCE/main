@@ -62,7 +62,7 @@ else
                 -h| --help ) usage
                     rm -f $PIDFILE; exit $HELPDISPLAY
                     ;;
-                -k| --check-config ) display_config
+                -t| --test-config ) display_config
                     check_setup
                     rm -f $PIDFILE; exit $STATUSDISPLAY
                     ;;

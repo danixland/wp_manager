@@ -32,7 +32,7 @@ and the script will tell you to go and edit it to suit your system configuration
 
 Once you're done, double check your settings with
 
-    wp_manager -k
+    wp_manager -t
 
 and if everything looks fine you can populate your cache directory with all the WordPress goodies that you need, so go ahead and issue:
 
@@ -76,8 +76,7 @@ If you don't remember what an option does or simply how to do something use
 
 	wp_manager -h
 
-and the script will give you a brief help text
-Running the script with no options will show the same help text.
+and the script will give you a brief help text. Running the script with no options will show the same help text.
 
 More on the Apache setting files
 -------

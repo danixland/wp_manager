@@ -1,7 +1,7 @@
 #! /bin/bash
 
-# Version 0.8
-VERSION="0.8.1"
+# Version 0.8.2
+VERSION="0.8.2"
 AUTHOR="Danilo 'danix' Macri <danix@danixland.net>"
 
 #------------------------------------------------------------------------------
@@ -269,7 +269,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
     echo -e "\nOptions:"
     echo -e "-h, --help\t\t\tshow this the help and exits."
     echo -e "-w, --write-config\t\tGenerate a config file for this script."
-    echo -e "-k, --check-config\t\tcheck the config and display a brief summary."
+    echo -e "-t, --test-config\t\tcheck the config and display a brief summary."
     echo -e "-s, --base-setup\t\tSetup the local cache, downloads WordPress and the basic plugins."
     echo -e "-b, --base-update\t\tUpdates the local cached WordPress codebase and plugins"
     echo -e "-l, --list\t\t\tLists all VirtualHosts created by this script."
@@ -734,7 +734,7 @@ else
                 -h| --help ) usage
                     rm -f $PIDFILE; exit $HELPDISPLAY
                     ;;
-                -k| --check-config ) display_config
+                -t| --test-config ) display_config
                     check_setup
                     rm -f $PIDFILE; exit $STATUSDISPLAY
                     ;;

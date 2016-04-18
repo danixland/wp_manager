@@ -1,5 +1,5 @@
 all: wp_manager
 
-wp_manager: head deps/helpers deps/core-* main
+wp_manager: SOURCE/head SOURCE/deps/helpers SOURCE/deps/core-* SOURCE/main
 	cat $^ > "$@" || (rm -f "$@"; exit 1)
 
