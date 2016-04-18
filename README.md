@@ -1,4 +1,4 @@
-wp_manager 0.8
+wp_manager 0.8.1
 ====================================
 
 This is a bash script to install and manage WordPress VHosts in a LAMP environment
@@ -30,7 +30,11 @@ Now to generate the config file issue the command:
 
 and the script will tell you to go and edit it to suit your system configuration.
 
-Once you're done, you'll want to populate your cache directory with all the WordPress goodies that you need, so go ahead and issue:
+Once you're done, double check your settings with
+
+    wp_manager -k
+
+and if everything looks fine you can populate your cache directory with all the WordPress goodies that you need, so go ahead and issue:
 
     wp_manager -s
 
@@ -73,8 +77,7 @@ If you don't remember what an option does or simply how to do something use
 	wp_manager -h
 
 and the script will give you a brief help text
-
-Running the script with no options will give you a overview of the current setup as well as a setup check for errors in your configuration file.
+Running the script with no options will show the same help text.
 
 More on the Apache setting files
 -------
