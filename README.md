@@ -1,4 +1,4 @@
-wp_manager 0.8.1
+wp_manager 0.8.2
 ====================================
 
 This is a bash script to install and manage WordPress VHosts in a LAMP environment
