@@ -55,13 +55,13 @@ Options
         <td>Display a list of the VirtualHosts currently set by wp_manager.</td>
     </tr>
     <tr>
-        <td>-i <NEW SITE></td>
-        <td>--install-new <NEW SITE></td>
+        <td>-i [NEW SITE]</td>
+        <td>--install-new [NEW SITE]</td>
         <td>Perform a check on "NEW SITE" and then install a new VirtualHost with WordPress and all the plugins already in place.</td>
     </tr>
     <tr>
-        <td>-d <SITE NAME></td>
-        <td>--delete <SITE NAME></td>
+        <td>-d [SITE NAME]</td>
+        <td>--delete [SITE NAME]</td>
         <td>Check if "SITE NAME" is a VirtualHost made by wp_manager and delete all the files, database and the entry in the Apache configuration files.</td>
     </tr>
     <tr>
