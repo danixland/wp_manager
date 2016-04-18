@@ -21,75 +21,58 @@ if [ -e $PIDFILE ]; then
 else
     echo $$ > $PIDFILE
 
-
     # Parse the commandline options:
     if (( $# == 0 )); then
-        echo -e "${GREEN}CURRENT CONFIGURATION:${COLOR_RESET} \n"
-        echo -e "Webserver\t\t = ${GREEN}$WEBSERVER${COLOR_RESET}"
-        echo -e "Apache config\t\t = ${GREEN}$APACHECONF${COLOR_RESET}"
-        echo -e "Apache user:group\t = ${GREEN}${APACHEUSER}:${APACHEGROUP}${COLOR_RESET}"
-        echo -e "Server Admin\t\t = ${GREEN}$SERVERADMIN${COLOR_RESET}"
-        echo -e "vhost config Directory\t = ${GREEN}$VHOSTCONFDIR${COLOR_RESET}"
-        echo -e "vhost config file\t = ${GREEN}$VHOSTCONF${COLOR_RESET}"
-        echo -e "Base Directory\t\t = ${GREEN}$BASEDIR${COLOR_RESET}"
-        echo -e "tmp Directory\t\t = ${GREEN}$TMPDIR${COLOR_RESET}"
-        echo -e "Username\t\t = ${GREEN}$DBUSER${COLOR_RESET}"
-        echo -e "Password\t\t = ${GREEN}$DBPASS${COLOR_RESET}"
-        echo -e "Host\t\t\t = ${GREEN}$HOST${COLOR_RESET}"
-        check_setup
-        rm -f $PIDFILE; exit $STATUSDISPLAY
+        usage
+        rm -f $PIDFILE; exit $HELPDISPLAY
     else
-        while getopts "i:d:bslhuw" Option
-        do
-            case $Option in
-                b ) check_setup
+        while [ $# -gt 0 ]; do
+            case $1 in
+                -b| --base-update ) check_setup
                     mktmp
                     base_update
                     break
                     ;;
-                i ) check_setup
+                -i| --install-new ) check_setup
                     mktmp
-                    install_new ${OPTARG}
+                    install_new $2
                     break
                     ;;
-                d ) check_setup
+                -d| --delete ) check_setup
                     mktmp
-                    delete ${OPTARG}
+                    delete $2
                     break
                     ;;
-                u ) check_setup
+                -u| --update ) check_setup
                     mktmp
                     update
                     break
                     ;;
-                s ) check_setup
+                -s| --base-setup ) check_setup
                     mktmp
                     base_setup
                     break
                     ;;
-                l ) list_vhosts
+                -l| --list ) list_vhosts
                     break
                     ;;
-                w ) generateconf
+                -w| --write-config ) generateconf
                     break
                     ;;
-                h ) usage
-                    break
+                -h| --help ) usage
+                    rm -f $PIDFILE; exit $HELPDISPLAY
+                    ;;
+                -k| --check-config ) display_config
+                    check_setup
+                    rm -f $PIDFILE; exit $STATUSDISPLAY
                     ;;
                 * ) usage
-                    break
+                    rm -f $PIDFILE; exit $E_UNKNOWNOPT
                     ;; # default behaviour
             esac
+            shift
         done
-
-        # End of option parsing.
-        shift $(($OPTIND - 1))
-
-        #  $1 now references the first non option item supplied on the command line
-        #  if one exists.
-        # ---------------------------------------------------------------------------
     fi
-
 fi
 
 if [ $CLEANUP == "yes" ]; then
