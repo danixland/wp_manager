@@ -36,6 +36,7 @@ backup() {
     cd ${TMPDIR}
     tar cJvf ${BACKUPDIR}/$(basename $0)/${to_backup}.tar.xz ${to_backup}/
     echo -e "${GREEN}${clean_site} backup finished successfully.${COLOR_RESET}"
+    cd $PWD
 }
 # TO DO: create a backup restore function
 

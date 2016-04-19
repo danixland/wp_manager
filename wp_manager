@@ -161,9 +161,9 @@ else
 fi
 
 
-# WordPress svn address
+# WordPress svn addresses
 WORDPRESS=${WORDPRESS:-"https://core.svn.wordpress.org/trunk/"}
-
+WPPLUGIN=${WPPLUGIN:-"https://plugins.svn.wordpress.org"}
 # helper function that checks for already installed VHosts
 check_installed() {
     new_site=$1
@@ -418,6 +418,7 @@ backup() {
     cd ${TMPDIR}
     tar cJvf ${BACKUPDIR}/$(basename $0)/${to_backup}.tar.xz ${to_backup}/
     echo -e "${GREEN}${clean_site} backup finished successfully.${COLOR_RESET}"
+    cd $PWD
 }
 # TO DO: create a backup restore function
 
@@ -598,7 +599,7 @@ base_setup() {
     [ ! -d ${directory} ] && mkdir ${directory}/PLUGINS
     for plugin in "${WP_PLUGINS[@]}"; do
         echo -e "${BLUE}Downloading ${GREEN}${plugin}${COLOR_RESET}"
-        ${SVN} co https://plugins.svn.wordpress.org/${plugin}/trunk ${directory}/PLUGINS/${plugin}
+        ${SVN} co ${WPPLUGIN}/${plugin}/trunk ${directory}/PLUGINS/${plugin}
     done
     echo -e "\n${GREEN}All base files have been installed successfully. Existing.${COLOR_RESET}"
 }

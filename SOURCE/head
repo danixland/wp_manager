@@ -161,6 +161,6 @@ else
 fi
 
 
-# WordPress svn address
+# WordPress svn addresses
 WORDPRESS=${WORDPRESS:-"https://core.svn.wordpress.org/trunk/"}
-
+WPPLUGIN=${WPPLUGIN:-"https://plugins.svn.wordpress.org"}
