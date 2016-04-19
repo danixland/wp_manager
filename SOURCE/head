@@ -157,7 +157,7 @@ if [ -z "$VHOSTCONFDIR" ]; then
 else
     # we have a separate directory 
     VHOSTLIST=""
-    [ -n "$(/bin/ls -A ${VHOSTCONFDIR}/wpm_*.conf 2>/dev/null)" ] && VHOSTLIST=$(/bin/ls -A ${VHOSTCONFDIR}/wpm_*.conf 2>/dev/null)
+    [ -n "$(/bin/ls -A ${VHOSTCONFDIR}/wpm_*.conf 2>/dev/null)" ] && VHOSTLIST=$(basename -a $(/bin/ls -A ${VHOSTCONFDIR}/wpm_*.conf 2>/dev/null)|sed 's/wpm_\([^ ]*\)\.conf/\1/')
 fi
 
 
