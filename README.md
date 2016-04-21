@@ -1,4 +1,4 @@
-wp_manager 0.8.3
+wp_manager 0.8.5
 ====================================
 
 This is a bash script to install and manage WordPress VHosts in a LAMP environment
@@ -74,6 +74,11 @@ Options
         <td>--backup [SITE NAME]</td>
         <td>Check if "SITE NAME" is a VirtualHost made by wp_manager and create a backup of all the files in the DocumentRoot of the VHost, this will also backup the database and the entry in the Apache configuration files.</td>
     </tr>
+    <tr>
+        <td>-r [BACKUP FILE]</td>
+        <td>--restore-backup [BACKUP FILE]</td>
+        <td>Check if "BACKUP FILE" is a valid backup made by wp_manager and restores all the files in the DocumentRoot of the VHost, this will also restore the database and the entry in the Apache configuration files. The site **must** exists for this option to work.</td>
+    </tr>
 </table>
 
 Usage
@@ -132,6 +137,12 @@ There will be times when you need to feel safe about what you're doing on your V
     wp_manager -k <sitename>
 
 and wp_manager will tell you that the site has been backed up, the content of the VirtualHost, the database and the entry in the Apache config file is now stored in your $BACKUPDIR.
+
+If you want to restore a website with a previously saved backup file, you'll issue:
+
+    wp_manager -r <backup file>
+
+And the site will be restored as it was at the moment of the backup. Just make sure the site exists when you run this restoring routine or the script will complain and exit.
 
 When you're done with a particular website and you want to delete it, run:
 
