@@ -49,7 +49,7 @@ base_setup() {
     [ ! -d ${directory} ] && mkdir ${directory}/PLUGINS
     for plugin in "${WP_PLUGINS[@]}"; do
         echo -e "${BLUE}Downloading ${GREEN}${plugin}${COLOR_RESET}"
-        ${SVN} co https://plugins.svn.wordpress.org/${plugin}/trunk ${directory}/PLUGINS/${plugin}
+        ${SVN} co ${WPPLUGIN}/${plugin}/trunk ${directory}/PLUGINS/${plugin}
     done
     echo -e "\n${GREEN}All base files have been installed successfully. Existing.${COLOR_RESET}"
 }

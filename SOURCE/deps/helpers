@@ -33,9 +33,12 @@ check_setup() {
 
     ERRORMSG=""
 
-    # we need to check that svn is installed before anything else
+    # we need to check our executables before anything else
     if [ ! -x ${SVN} ]; then
         ERRORMSG+="\"${SVN}\" executable not found, check your \$SVN setting."
+    fi
+    if [ ! -x ${MYSQLDUMP} ]; then
+        ERRORMSG+="\"${MYSQLDUMP}\" executable not found, check your \$MYSQLDUMP setting."
     fi
     # check the DocRoot
     if [ ! -d ${WEBSERVER} ]; then
