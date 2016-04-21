@@ -27,7 +27,7 @@ backup() {
     elif [ $VHOSTCONF ]; then
         sed -n "/# BEGIN WP_MANAGER VHOST ${clean_site}/,/# END WP_MANAGER VHOST ${clean_site}/p" ${VHOSTCONF} > ${TMPDIR}/${to_backup}/$(basename ${VHOSTCONF})
     fi
-    # TODO: implement delete routine based on httpd.conf file
+    # TODO: implement backup routine based on httpd.conf file
 
     cp -vr ${WEBSERVER}/${clean_site}/* ${TMPDIR}/${to_backup}/WP
     ${MYSQLDUMP} ${clean_site} > ${TMPDIR}/${to_backup}/${clean_site}.sql
@@ -38,5 +38,61 @@ backup() {
     echo -e "${GREEN}${clean_site} backup finished successfully.${COLOR_RESET}"
     cd $PWD
 }
-# TO DO: create a backup restore function
 
+#------------------------------------------------------------------------------
+#                       ### Restore a Backup for a VHost ###
+#------------------------------------------------------------------------------
+restore_backup() {
+    to_restore=$1
+    if [ ! -r ${to_restore} ]; then
+        # The file is not readable
+        echo "'${to_restore}' is not readable, I can't use it. Exiting now."
+        [ $CLEANUP == "yes" ] && [ -d $TMPDIR ] && rm -rf $TMPDIR
+        rm -f $PIDFILE
+        exit $E_NOBKPFILE
+    else
+        if [[ ! $(file -ib ${to_restore}|cut -d ";" -f 1) == "application/x-xz" ]]; then
+            # The file is not a tar.xz archive
+            echo "'${to_restore}' is not a valid compressed archive. Exiting now."
+            [ $CLEANUP == "yes" ] && [ -d $TMPDIR ] && rm -rf $TMPDIR
+            rm -f $PIDFILE
+            exit $E_INVALIDBKPFILE
+        else
+            site_name=$(echo $(basename ${to_restore}) |sed 's/^\([a-zA-Z0-9]*\)-[0-9]*\.tar\.xz/\1/')
+            check_installed $site_name
+            if [ $? -ne 150 ]; then
+                # $site_name doesn't exists. nothing to backup
+                echo "${site_name} doesn't exists. I can't restore it."
+                echo "You may want to install it first and the run the restore routine again. Exiting now."
+                [ $CLEANUP == "yes" ] && [ -d $TMPDIR ] && rm -rf $TMPDIR
+                rm -f $PIDFILE
+                exit $E_BKPSITENOTEXISTS
+            fi
+            cd ${TMPDIR}
+            tar Jxvf ${to_restore}
+            restore_dir=$(basename ${to_restore})
+            echo -e "${BLUE}Restoring files inside '${WEBSERVER}/${site_name}'${COLOR_RESET}"
+            if [ -d ${WEBSERVER}/${site_name} ];then
+                rm -rf ${WEBSERVER}/${site_name}/*
+                cp -vr ${restore_dir%%.*}/WP/* ${WEBSERVER}/${site_name}/
+            else
+                cp -vr ${restore_dir%%.*}/WP/* ${WEBSERVER}/${site_name}/
+            fi
+
+            # we check first for a VHOSTCONFDIR, and if we haven't set one we try other methods
+            echo -e "${BLUE}Restoring VirtualHost entry for '${site_name}'${COLOR_RESET}"
+            if [ $VHOSTCONFDIR ]; then
+                # put the backup back in it's place
+                cp -v ${restore_dir%%.*}/wpm_${site_name}.conf ${VHOSTCONFDIR}/
+            # no VHOSTCONFDIR, let's check for a vhost-conf file. If we have it we can proceed
+            elif [ $VHOSTCONF ]; then
+                cat ${restore_dir%%.*}/$(basename ${VHOSTCONF}) >> ${VHOSTCONF}
+            fi
+            # TODO: implement backup routine based on httpd.conf file
+
+            echo -e "${BLUE}Restoring database '${site_name}'${COLOR_RESET}"
+            mysql ${site_name} < ${restore_dir%%.*}/${site_name}.sql
+        fi
+    fi
+    echo -e "${GREEN}'${site_name}' has been restored successfully.${COLOR_RESET}"
+}

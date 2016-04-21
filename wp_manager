@@ -1,6 +1,6 @@
 #! /bin/bash
 
-VERSION="0.8.3"
+VERSION="0.8.5"
 AUTHOR="Danilo 'danix' Macri <danix@danixland.net>"
 
 #------------------------------------------------------------------------------
@@ -35,6 +35,9 @@ E_NOVHOSTSUPDATABLE=178
 E_ONLYROOTALLOWED=179
 E_UNKNOWNOPT=180
 E_BKPNOSITE=181
+E_NOBKPFILE=182
+E_INVALIDBKPFILE=183
+E_BKPSITENOTEXISTS=184
 
 #------------------------------------------------------------------------------
 #                               ### OPTIONS ###
@@ -276,15 +279,16 @@ with this program; if not, write to the Free Software Foundation, Inc.,
     echo "USAGE: `basename $0 ` [OPTION] [vhostname]"
     echo -e "\nOptions:"
     echo -e "-h, --help\t\t\tshow this the help and exits."
-    echo -e "-w, --write-config\t\tGenerate a config file for this script."
-    echo -e "-t, --test-config\t\tcheck the config and display a brief summary."
-    echo -e "-s, --base-setup\t\tSetup the local cache, downloads WordPress and the basic plugins."
-    echo -e "-b, --base-update\t\tUpdates the local cached WordPress codebase and plugins"
-    echo -e "-l, --list\t\t\tLists all VirtualHosts created by this script."
-    echo -e "-i, --install-new <NEW SITE>\tInstall the VHost 'NEW SITE'"
-    echo -e "-d, --delete <SITE NAME>\tDeletes the VHost 'SITE NAME' and all of its data"
-    echo -e "-u, --update\t\t\tUpdates all VHosts created by this script."
-    echo -e "-k, --backup <SITE NAME>\tCreates a backup of the VHost 'SITE NAME'."
+    echo -e "-w, --write-config\t\t\tGenerate a config file for this script."
+    echo -e "-t, --test-config\t\t\tcheck the config and display a brief summary."
+    echo -e "-s, --base-setup\t\t\tSetup the local cache, downloads WordPress and the basic plugins."
+    echo -e "-b, --base-update\t\t\tUpdates the local cached WordPress codebase and plugins"
+    echo -e "-l, --list\t\t\t\tLists all VirtualHosts created by this script."
+    echo -e "-i, --install-new <NEW SITE>\t\tInstall the VHost 'NEW SITE'"
+    echo -e "-d, --delete <SITE NAME>\t\tDeletes the VHost 'SITE NAME' and all of its data"
+    echo -e "-u, --update\t\t\t\tUpdates all VHosts created by this script."
+    echo -e "-k, --backup <SITE NAME>\t\tCreates a backup of the VHost 'SITE NAME'."
+    echo -e "-r, --restore-backup <BACKUP FILE>\t\tRestores a previous backup using 'BACKUP FILE'."
 }
 
 #------------------------------------------------------------------------------
@@ -364,11 +368,11 @@ update() {
             if [ -s $todelete ]; then
                 echo -e "${BLUE}Deleting obsolete files${COLOR_RESET}"
                 for file in $(cat $todelete); do
-                    rm $file
+                    rm -v $file
                 done
             fi
             echo -e "${BLUE}Updating WordPress files${COLOR_RESET}"
-            cp -R ${directory}/patches/wp-add/* .
+            cp -Rv ${directory}/patches/wp-add/* .
         done
     else
         echo -e "${YELLOW}no VHosts to update, Exiting.${COLOR_RESET}"
@@ -409,7 +413,7 @@ backup() {
     elif [ $VHOSTCONF ]; then
         sed -n "/# BEGIN WP_MANAGER VHOST ${clean_site}/,/# END WP_MANAGER VHOST ${clean_site}/p" ${VHOSTCONF} > ${TMPDIR}/${to_backup}/$(basename ${VHOSTCONF})
     fi
-    # TODO: implement delete routine based on httpd.conf file
+    # TODO: implement backup routine based on httpd.conf file
 
     cp -vr ${WEBSERVER}/${clean_site}/* ${TMPDIR}/${to_backup}/WP
     ${MYSQLDUMP} ${clean_site} > ${TMPDIR}/${to_backup}/${clean_site}.sql
@@ -420,8 +424,64 @@ backup() {
     echo -e "${GREEN}${clean_site} backup finished successfully.${COLOR_RESET}"
     cd $PWD
 }
-# TO DO: create a backup restore function
 
+#------------------------------------------------------------------------------
+#                       ### Restore a Backup for a VHost ###
+#------------------------------------------------------------------------------
+restore_backup() {
+    to_restore=$1
+    if [ ! -r ${to_restore} ]; then
+        # The file is not readable
+        echo "'${to_restore}' is not readable, I can't use it. Exiting now."
+        [ $CLEANUP == "yes" ] && [ -d $TMPDIR ] && rm -rf $TMPDIR
+        rm -f $PIDFILE
+        exit $E_NOBKPFILE
+    else
+        if [[ ! $(file -ib ${to_restore}|cut -d ";" -f 1) == "application/x-xz" ]]; then
+            # The file is not a tar.xz archive
+            echo "'${to_restore}' is not a valid compressed archive. Exiting now."
+            [ $CLEANUP == "yes" ] && [ -d $TMPDIR ] && rm -rf $TMPDIR
+            rm -f $PIDFILE
+            exit $E_INVALIDBKPFILE
+        else
+            site_name=$(echo $(basename ${to_restore}) |sed 's/^\([a-zA-Z0-9]*\)-[0-9]*\.tar\.xz/\1/')
+            check_installed $site_name
+            if [ $? -ne 150 ]; then
+                # $site_name doesn't exists. nothing to backup
+                echo "${site_name} doesn't exists. I can't restore it."
+                echo "You may want to install it first and the run the restore routine again. Exiting now."
+                [ $CLEANUP == "yes" ] && [ -d $TMPDIR ] && rm -rf $TMPDIR
+                rm -f $PIDFILE
+                exit $E_BKPSITENOTEXISTS
+            fi
+            cd ${TMPDIR}
+            tar Jxvf ${to_restore}
+            restore_dir=$(basename ${to_restore})
+            echo -e "${BLUE}Restoring files inside '${WEBSERVER}/${site_name}'${COLOR_RESET}"
+            if [ -d ${WEBSERVER}/${site_name} ];then
+                rm -rf ${WEBSERVER}/${site_name}/*
+                cp -vr ${restore_dir%%.*}/WP/* ${WEBSERVER}/${site_name}/
+            else
+                cp -vr ${restore_dir%%.*}/WP/* ${WEBSERVER}/${site_name}/
+            fi
+
+            # we check first for a VHOSTCONFDIR, and if we haven't set one we try other methods
+            echo -e "${BLUE}Restoring VirtualHost entry for '${site_name}'${COLOR_RESET}"
+            if [ $VHOSTCONFDIR ]; then
+                # put the backup back in it's place
+                cp -v ${restore_dir%%.*}/wpm_${site_name}.conf ${VHOSTCONFDIR}/
+            # no VHOSTCONFDIR, let's check for a vhost-conf file. If we have it we can proceed
+            elif [ $VHOSTCONF ]; then
+                cat ${restore_dir%%.*}/$(basename ${VHOSTCONF}) >> ${VHOSTCONF}
+            fi
+            # TODO: implement backup routine based on httpd.conf file
+
+            echo -e "${BLUE}Restoring database '${site_name}'${COLOR_RESET}"
+            mysql ${site_name} < ${restore_dir%%.*}/${site_name}.sql
+        fi
+    fi
+    echo -e "${GREEN}'${site_name}' has been restored successfully.${COLOR_RESET}"
+}
 #------------------------------------------------------------------------------
 #                           ### Install new VHost ###
 #------------------------------------------------------------------------------
@@ -778,6 +838,11 @@ else
                 -k| --backup ) check_setup
                     mktmp
                     backup $2
+                    break
+                    ;;
+                -r| --restore-backup ) check_setup
+                    mktmp
+                    restore_backup $2
                     break
                     ;;
                 -s| --base-setup ) check_setup

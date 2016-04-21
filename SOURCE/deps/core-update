@@ -13,11 +13,11 @@ update() {
             if [ -s $todelete ]; then
                 echo -e "${BLUE}Deleting obsolete files${COLOR_RESET}"
                 for file in $(cat $todelete); do
-                    rm $file
+                    rm -v $file
                 done
             fi
             echo -e "${BLUE}Updating WordPress files${COLOR_RESET}"
-            cp -R ${directory}/patches/wp-add/* .
+            cp -Rv ${directory}/patches/wp-add/* .
         done
     else
         echo -e "${YELLOW}no VHosts to update, Exiting.${COLOR_RESET}"

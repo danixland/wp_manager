@@ -56,6 +56,11 @@ else
                     backup $2
                     break
                     ;;
+                -r| --restore-backup ) check_setup
+                    mktmp
+                    restore_backup $2
+                    break
+                    ;;
                 -s| --base-setup ) check_setup
                     mktmp
                     base_setup

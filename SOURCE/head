@@ -1,6 +1,6 @@
 #! /bin/bash
 
-VERSION="0.8.3"
+VERSION="0.8.5"
 AUTHOR="Danilo 'danix' Macri <danix@danixland.net>"
 
 #------------------------------------------------------------------------------
@@ -35,6 +35,9 @@ E_NOVHOSTSUPDATABLE=178
 E_ONLYROOTALLOWED=179
 E_UNKNOWNOPT=180
 E_BKPNOSITE=181
+E_NOBKPFILE=182
+E_INVALIDBKPFILE=183
+E_BKPSITENOTEXISTS=184
 
 #------------------------------------------------------------------------------
 #                               ### OPTIONS ###
