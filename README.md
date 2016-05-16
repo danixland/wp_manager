@@ -1,4 +1,4 @@
-wp_manager 0.8.5
+wp_manager 0.9
 ====================================
 
 This is a bash script to install and manage WordPress VHosts in a LAMP environment
@@ -160,6 +160,11 @@ More on the Apache setting files
 -------
 
 **wp_manager** is able to use either a single file to keep all your vhosts settings or a separate directory with a file for every vhost that you want to setup, it's all well commented in your config file, just remember that by default the separate directory setting will supersede the single file option, so if you want to use the latter option, you'll have to leave the other empty as they are mutually exclusive.
+
+Upgrading the script
+-------
+
+When upgrading **wp_manager** it's better to generate a new config file with the `-w` option and modify it to suit your needs, this will make sure your settings include any new options that may appear in the config file. Creating a new config file will backup your existing settings inside the same directory so you don't lose them.
 
 Comments
 -------
