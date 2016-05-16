@@ -75,33 +75,7 @@ base_update() {
         fi
     fi
     echo -e "${BLUE}Updating base files inside ${GREEN}'${directory}'"
-    echo -e "${BLUE}Creating patch files inside ${GREEN}'${directory}/patches/'${COLOR_RESET}"
-    [ -d ${directory}/patches ] && rm ${directory}/patches/*
-    # now we have a clean old copy of WordPress
-    ${SVN} export ${directory}/WP ${TMPDIR}/WP.old
-    # and a clean new copy here
     ${SVN} up ${directory}/WP
-    ${SVN} export ${directory}/WP ${TMPDIR}/WP.new
-    # let's create some patch files containing the name of all the modified files 
-    # between the two versions of WP
-
-# Find files existing only in one of the two versions, either new or old
-#   diff -qr WP.old WP.new/ |grep Only | sed -e 's/Only in //' -e 's/: /\//'
-    cd $TMPDIR
-    # Get those files that needs to be deleted with: 
-    diff -qr WP.old WP.new/ |grep Only |grep -e old | sed -e 's/Only in //' -e 's/: /\//' > ${directory}/patches/wp-delete.txt
-    # And files that need to be added with:
-    diff -qr WP.old WP.new/ |grep Only |grep -e new | sed -e 's/Only in //' -e 's/: /\//' >> wp-add-update.txt
-    # And finally we can get those files that need to be updated with:
-    diff -qr WP.old WP.new/ | cut -d " " -f 4 |grep WP. >> wp-add-update.txt
-    sed 's/WP.new\///' < wp-add-update.txt > wp-patch.txt
-    mkdir -p ${directory}/patches/wp-add
-    mods=$(cat ${TMPDIR}/wp-patch.txt)
-    cd WP.new
-    for i in $mods;do
-        cp --parents $i ${directory}/patches/wp-add/
-    done
-    cd $PWD
 
     echo -e "${BLUE}Updating plugins${COLOR_RESET}"
     for plugin_dir in $(/bin/ls ${directory}/PLUGINS); do

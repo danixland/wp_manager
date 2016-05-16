@@ -1,6 +1,6 @@
 #! /bin/bash
 
-VERSION="0.8.5"
+VERSION="0.9"
 AUTHOR="Danilo 'danix' Macri <danix@danixland.net>"
 
 #------------------------------------------------------------------------------
@@ -48,6 +48,7 @@ set_defaults() {
 # Binaries to use:
 SVN=${SVN:-"/usr/bin/svn"}
 MYSQLDUMP=${MYSQLDUMP:-"/usr/bin/mysqldump"}
+RSYNC=${RSYNC:-"/usr/bin/rsync"}
 
 # Set this variable to your server's DocumentRoot.
 WEBSERVER=${WEBSERVER:-"/var/www/htdocs"}
@@ -128,6 +129,11 @@ WP_PLUGINS=${WP_PLUGINS:-(
     "theme-check"
     "wordpress-importer"
 )}
+
+# Options used by rsync during VHosts upgrade, useful if you want to 
+# exclude or include specific directories. Our rsync command already uses
+# the options -rtvz during upgrade.
+RSYNCOPTS=${RSYNCOPTS:-"--exclude wp-content"}
 
 } # end set_defaults, do not change this line.
 

@@ -1,6 +1,6 @@
 #! /bin/bash
 
-VERSION="0.8.5"
+VERSION="0.9"
 AUTHOR="Danilo 'danix' Macri <danix@danixland.net>"
 
 #------------------------------------------------------------------------------
@@ -48,6 +48,7 @@ set_defaults() {
 # Binaries to use:
 SVN=${SVN:-"/usr/bin/svn"}
 MYSQLDUMP=${MYSQLDUMP:-"/usr/bin/mysqldump"}
+RSYNC=${RSYNC:-"/usr/bin/rsync"}
 
 # Set this variable to your server's DocumentRoot.
 WEBSERVER=${WEBSERVER:-"/var/www/htdocs"}
@@ -128,6 +129,11 @@ WP_PLUGINS=${WP_PLUGINS:-(
     "theme-check"
     "wordpress-importer"
 )}
+
+# Options used by rsync during VHosts upgrade, useful if you want to 
+# exclude or include specific directories. Our rsync command already uses
+# the options -rtvz during upgrade.
+RSYNCOPTS=${RSYNCOPTS:-"--exclude wp-content"}
 
 } # end set_defaults, do not change this line.
 
@@ -278,7 +284,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
     echo -e "\n$(basename $0) is a bash script to install and manage WordPress VHosts in a LAMP environment\n"
     echo "USAGE: `basename $0 ` [OPTION] [vhostname]"
     echo -e "\nOptions:"
-    echo -e "-h, --help\t\t\tshow this the help and exits."
+    echo -e "-h, --help\t\t\t\tshow this the help and exits."
     echo -e "-w, --write-config\t\t\tGenerate a config file for this script."
     echo -e "-t, --test-config\t\t\tcheck the config and display a brief summary."
     echo -e "-s, --base-setup\t\t\tSetup the local cache, downloads WordPress and the basic plugins."
@@ -288,7 +294,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
     echo -e "-d, --delete <SITE NAME>\t\tDeletes the VHost 'SITE NAME' and all of its data"
     echo -e "-u, --update\t\t\t\tUpdates all VHosts created by this script."
     echo -e "-k, --backup <SITE NAME>\t\tCreates a backup of the VHost 'SITE NAME'."
-    echo -e "-r, --restore-backup <BACKUP FILE>\t\tRestores a previous backup using 'BACKUP FILE'."
+    echo -e "-r, --restore-backup <BACKUP FILE>\tRestores a previous backup using 'BACKUP FILE'."
 }
 
 #------------------------------------------------------------------------------
@@ -359,129 +365,109 @@ display_config() {
 # USAGE: $0 -u
 update() {
     directory=$(dirname ${WEBSERVER})/${BASEDIR}
-    todelete="${directory}/patches/wp-delete.txt"
     VHOSTS=$(echo ${VHOSTLIST})
     if [ -n "$VHOSTS" ]; then
+        ${SVN} export ${directory}/WP ${TMPDIR}/WP
         for site in $VHOSTS; do
             echo -e "${BLUE}Updating WordPress install on ${GREEN}${WEBSERVER}/$site${COLOR_RESET}"
-            cd ${WEBSERVER}/$site
-            if [ -s $todelete ]; then
-                echo -e "${BLUE}Deleting obsolete files${COLOR_RESET}"
-                for file in $(cat $todelete); do
-                    rm -v $file
-                done
-            fi
-            echo -e "${BLUE}Updating WordPress files${COLOR_RESET}"
-            cp -Rv ${directory}/patches/wp-add/* .
+            $RSYNC -rtvzi $RSYNCOPTS ${TMPDIR}/WP/ ${WEBSERVER}/${site}/
         done
     else
         echo -e "${YELLOW}no VHosts to update, Exiting.${COLOR_RESET}"
-        cd $PWD
         rm -f $PIDFILE
         exit $E_NOVHOSTSUPDATABLE
     fi
-    cd $PWD
     echo -e "${GREEN}aLL VHosts are up to date now.${COLOR_RESET}"
 }
 
 #------------------------------------------------------------------------------
-#                           ### Backup selected VHost ###
+#                           ### Setup base files ###
 #------------------------------------------------------------------------------
-backup() {
-    bkp_vhost=$1
-    clean_site=${bkp_vhost//[^a-zA-Z0-9]/}
-    check_installed $clean_site
-    if [ $? -ne 150 ]; then
-        # $clean_site doesn't exists. nothing to backup
-        echo "${clean_site} doesn't exists. I have nothing to backup. Exiting now."
-        [ $CLEANUP == "yes" ] && [ -d $TMPDIR ] && rm -rf $TMPDIR
-        rm -f $PIDFILE
-        exit $E_BKPNOSITE
-    fi
-
-    to_backup=${clean_site}-$(date +%s)
-
-    mkdir -p ${TMPDIR}/${to_backup}/WP
-    echo -e "${GREEN}Backing up '${clean_site}'.${COLOR_RESET}"
-
-    # we check first for a VHOSTCONFDIR, and if we haven't set one we try other methods
-    if [ $VHOSTCONFDIR ]; then
-        # create directory to hold our backup
-        cp -v ${VHOSTCONFDIR}/wpm_${clean_site}.conf ${TMPDIR}/${to_backup}/
-
-    # no VHOSTCONFDIR, let's check for a vhost-conf file. If we have it we can proceed
-    elif [ $VHOSTCONF ]; then
-        sed -n "/# BEGIN WP_MANAGER VHOST ${clean_site}/,/# END WP_MANAGER VHOST ${clean_site}/p" ${VHOSTCONF} > ${TMPDIR}/${to_backup}/$(basename ${VHOSTCONF})
-    fi
-    # TODO: implement backup routine based on httpd.conf file
-
-    cp -vr ${WEBSERVER}/${clean_site}/* ${TMPDIR}/${to_backup}/WP
-    ${MYSQLDUMP} ${clean_site} > ${TMPDIR}/${to_backup}/${clean_site}.sql
-
-    echo -e "${BLUE}Compressing backup.${COLOR_RESET}"
-    cd ${TMPDIR}
-    tar cJvf ${BACKUPDIR}/$(basename $0)/${to_backup}.tar.xz ${to_backup}/
-    echo -e "${GREEN}${clean_site} backup finished successfully.${COLOR_RESET}"
-    cd $PWD
-}
-
-#------------------------------------------------------------------------------
-#                       ### Restore a Backup for a VHost ###
-#------------------------------------------------------------------------------
-restore_backup() {
-    to_restore=$1
-    if [ ! -r ${to_restore} ]; then
-        # The file is not readable
-        echo "'${to_restore}' is not readable, I can't use it. Exiting now."
-        [ $CLEANUP == "yes" ] && [ -d $TMPDIR ] && rm -rf $TMPDIR
-        rm -f $PIDFILE
-        exit $E_NOBKPFILE
+# USAGE: $0 -s
+base_setup() {
+    directory=$(dirname ${WEBSERVER})/${BASEDIR}
+    echo -e "${BLUE}installing base files inside ${GREEN}'${directory}'"
+    if [ ! -d $directory ]; then
+        echo -e "${BLUE}creating base directory '${directory}'"
+        mkdir -p $directory
     else
-        if [[ ! $(file -ib ${to_restore}|cut -d ";" -f 1) == "application/x-xz" ]]; then
-            # The file is not a tar.xz archive
-            echo "'${to_restore}' is not a valid compressed archive. Exiting now."
+        echo -e "${YELLOW}${directory} already exists."
+        echo -e "If you're trying to update your base directory you can run:"
+        echo -e "${GREEN}'$(basename $0) -b'${YELLOW} without needing to rebuild.${BLUE}\n"
+        read -p "do you really wish to rebuild ${directory}? [y/n] " -n 1 -r; echo -e ${COLOR_RESET}
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
             [ $CLEANUP == "yes" ] && [ -d $TMPDIR ] && rm -rf $TMPDIR
             rm -f $PIDFILE
-            exit $E_INVALIDBKPFILE
+            exit $USERABORTED
         else
-            site_name=$(echo $(basename ${to_restore}) |sed 's/^\([a-zA-Z0-9]*\)-[0-9]*\.tar\.xz/\1/')
-            check_installed $site_name
-            if [ $? -ne 150 ]; then
-                # $site_name doesn't exists. nothing to backup
-                echo "${site_name} doesn't exists. I can't restore it."
-                echo "You may want to install it first and the run the restore routine again. Exiting now."
-                [ $CLEANUP == "yes" ] && [ -d $TMPDIR ] && rm -rf $TMPDIR
-                rm -f $PIDFILE
-                exit $E_BKPSITENOTEXISTS
-            fi
-            cd ${TMPDIR}
-            tar Jxvf ${to_restore}
-            restore_dir=$(basename ${to_restore})
-            echo -e "${BLUE}Restoring files inside '${WEBSERVER}/${site_name}'${COLOR_RESET}"
-            if [ -d ${WEBSERVER}/${site_name} ];then
-                rm -rf ${WEBSERVER}/${site_name}/*
-                cp -vr ${restore_dir%%.*}/WP/* ${WEBSERVER}/${site_name}/
-            else
-                cp -vr ${restore_dir%%.*}/WP/* ${WEBSERVER}/${site_name}/
-            fi
-
-            # we check first for a VHOSTCONFDIR, and if we haven't set one we try other methods
-            echo -e "${BLUE}Restoring VirtualHost entry for '${site_name}'${COLOR_RESET}"
-            if [ $VHOSTCONFDIR ]; then
-                # put the backup back in it's place
-                cp -v ${restore_dir%%.*}/wpm_${site_name}.conf ${VHOSTCONFDIR}/
-            # no VHOSTCONFDIR, let's check for a vhost-conf file. If we have it we can proceed
-            elif [ $VHOSTCONF ]; then
-                cat ${restore_dir%%.*}/$(basename ${VHOSTCONF}) >> ${VHOSTCONF}
-            fi
-            # TODO: implement backup routine based on httpd.conf file
-
-            echo -e "${BLUE}Restoring database '${site_name}'${COLOR_RESET}"
-            mysql ${site_name} < ${restore_dir%%.*}/${site_name}.sql
+            echo -e "${BLUE}rebuilding base directory ${GREEN}'${directory}'${COLOR_RESET}"
+            rm -rf $directory && mkdir $directory
         fi
     fi
-    echo -e "${GREEN}'${site_name}' has been restored successfully.${COLOR_RESET}"
+    # create patches directory
+    mkdir ${directory}/patches
+    # echo today's date in unix timestamp (no seconds)
+    touch ${directory}/lastupdate && echo $(date -d $(date +"%Y-%m-%d") +%s) > ${directory}/lastupdate
+    # let's get salty! we'll need those keys in a minute
+    echo -e "${BLUE}Downloading secret-keys from WordPress.org API${COLOR_RESET}"
+    wget -O ${TMPDIR}/wp.keys https://api.wordpress.org/secret-key/1.1/salt/
+    echo -e "${BLUE}Downloading WordPress from svn${COLOR_RESET}"
+    ${SVN} co ${WORDPRESS} ${directory}/WP
+    echo -e "${BLUE}creating base wp-config.php${COLOR_RESET}"
+    cp ${directory}/WP/wp-config-sample.php ${TMPDIR}/wp-config.php
+    # substitute username and password with our settings
+    sed -i "s/username_here/${DBUSER}/" ${TMPDIR}/wp-config.php
+    sed -i "s/password_here/${DBPASS}/" ${TMPDIR}/wp-config.php
+    # copy the secret keys into our file
+    sed -i "/#@-/r ${TMPDIR}/wp.keys" ${TMPDIR}/wp-config.php
+    sed -i "/#@+/,/#@-/d" ${TMPDIR}/wp-config.php
+    # activate WP_DEBUG and SAVEQUERIES
+    sed -i "s/false)/true)/" ${TMPDIR}/wp-config.php
+    sed -i "/define('WP_DEBUG'/ a define( 'SAVEQUERIES', true );" ${TMPDIR}/wp-config.php
+    # put the wp-config.php file back in its place
+    cp ${TMPDIR}/wp-config.php ${directory}/wp-config.php
+    # download every plugin we need from svn inside PLUGINS directory
+    echo -e "${BLUE}Downloading plugins${COLOR_RESET}"
+    [ ! -d ${directory} ] && mkdir ${directory}/PLUGINS
+    for plugin in "${WP_PLUGINS[@]}"; do
+        echo -e "${BLUE}Downloading ${GREEN}${plugin}${COLOR_RESET}"
+        ${SVN} co ${WPPLUGIN}/${plugin}/trunk ${directory}/PLUGINS/${plugin}
+    done
+    echo -e "\n${GREEN}All base files have been installed successfully. Existing.${COLOR_RESET}"
 }
+
+#------------------------------------------------------------------------------
+#                           ### Update base files ###
+#------------------------------------------------------------------------------
+# USAGE: $0 -b
+base_update() {
+    directory=$(dirname ${WEBSERVER})/${BASEDIR}
+    # test last update - ideally this options needs to run once a day
+    if [ -r ${directory}/lastupdate ]; then
+        lastup=$(cat ${directory}/lastupdate)
+        today=$(date -d $(date +"%Y-%m-%d") +%s)
+        if [ $today -eq $lastup ]; then
+            echo -e "${YELLOW}It appears that you updated less than 1 day ago.${BLUE}\n"
+            read -p "do you really wish to continue the update? [y/n] " -n 1 -r; echo -e ${COLOR_RESET}
+            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                [ $CLEANUP == "yes" ] && [ -d $TMPDIR ] && rm -rf $TMPDIR
+                rm -f $PIDFILE
+                exit $USERABORTED
+            fi
+        fi
+    fi
+    echo -e "${BLUE}Updating base files inside ${GREEN}'${directory}'"
+    ${SVN} up ${directory}/WP
+
+    echo -e "${BLUE}Updating plugins${COLOR_RESET}"
+    for plugin_dir in $(/bin/ls ${directory}/PLUGINS); do
+        echo -e "${BLUE}Updating ${GREEN}${plugin_dir}${COLOR_RESET}"
+        ${SVN} up ${directory}/PLUGINS/${plugin_dir}
+    done
+    echo $(date -d $(date +"%Y-%m-%d") +%s) > ${directory}/lastupdate
+    echo -e "\n${GREEN}All base files have been updated successfully. Existing.${COLOR_RESET}"
+}
+
 #------------------------------------------------------------------------------
 #                           ### Install new VHost ###
 #------------------------------------------------------------------------------
@@ -609,119 +595,103 @@ MYSQLSCRIPT
 }
 
 #------------------------------------------------------------------------------
-#                           ### Setup base files ###
+#                           ### Backup selected VHost ###
 #------------------------------------------------------------------------------
-# USAGE: $0 -s
-base_setup() {
-    directory=$(dirname ${WEBSERVER})/${BASEDIR}
-    echo -e "${BLUE}installing base files inside ${GREEN}'${directory}'"
-    if [ ! -d $directory ]; then
-        echo -e "${BLUE}creating base directory '${directory}'"
-        mkdir -p $directory
+backup() {
+    bkp_vhost=$1
+    clean_site=${bkp_vhost//[^a-zA-Z0-9]/}
+    check_installed $clean_site
+    if [ $? -ne 150 ]; then
+        # $clean_site doesn't exists. nothing to backup
+        echo "${clean_site} doesn't exists. I have nothing to backup. Exiting now."
+        [ $CLEANUP == "yes" ] && [ -d $TMPDIR ] && rm -rf $TMPDIR
+        rm -f $PIDFILE
+        exit $E_BKPNOSITE
+    fi
+
+    to_backup=${clean_site}-$(date +%s)
+
+    mkdir -p ${TMPDIR}/${to_backup}/WP
+    echo -e "${GREEN}Backing up '${clean_site}'.${COLOR_RESET}"
+
+    # we check first for a VHOSTCONFDIR, and if we haven't set one we try other methods
+    if [ $VHOSTCONFDIR ]; then
+        # create directory to hold our backup
+        cp -v ${VHOSTCONFDIR}/wpm_${clean_site}.conf ${TMPDIR}/${to_backup}/
+
+    # no VHOSTCONFDIR, let's check for a vhost-conf file. If we have it we can proceed
+    elif [ $VHOSTCONF ]; then
+        sed -n "/# BEGIN WP_MANAGER VHOST ${clean_site}/,/# END WP_MANAGER VHOST ${clean_site}/p" ${VHOSTCONF} > ${TMPDIR}/${to_backup}/$(basename ${VHOSTCONF})
+    fi
+    # TODO: implement backup routine based on httpd.conf file
+
+    cp -vr ${WEBSERVER}/${clean_site}/* ${TMPDIR}/${to_backup}/WP
+    ${MYSQLDUMP} ${clean_site} > ${TMPDIR}/${to_backup}/${clean_site}.sql
+
+    echo -e "${BLUE}Compressing backup.${COLOR_RESET}"
+    cd ${TMPDIR}
+    tar cJvf ${BACKUPDIR}/$(basename $0)/${to_backup}.tar.xz ${to_backup}/
+    echo -e "${GREEN}${clean_site} backup finished successfully.${COLOR_RESET}"
+    cd $PWD
+}
+
+#------------------------------------------------------------------------------
+#                       ### Restore a Backup for a VHost ###
+#------------------------------------------------------------------------------
+restore_backup() {
+    to_restore=$1
+    if [ ! -r ${to_restore} ]; then
+        # The file is not readable
+        echo "'${to_restore}' is not readable, I can't use it. Exiting now."
+        [ $CLEANUP == "yes" ] && [ -d $TMPDIR ] && rm -rf $TMPDIR
+        rm -f $PIDFILE
+        exit $E_NOBKPFILE
     else
-        echo -e "${YELLOW}${directory} already exists."
-        echo -e "If you're trying to update your base directory you can run:"
-        echo -e "${GREEN}'$(basename $0) -b'${YELLOW} without needing to rebuild.${BLUE}\n"
-        read -p "do you really wish to rebuild ${directory}? [y/n] " -n 1 -r; echo -e ${COLOR_RESET}
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        if [[ ! $(file -ib ${to_restore}|cut -d ";" -f 1) == "application/x-xz" ]]; then
+            # The file is not a tar.xz archive
+            echo "'${to_restore}' is not a valid compressed archive. Exiting now."
             [ $CLEANUP == "yes" ] && [ -d $TMPDIR ] && rm -rf $TMPDIR
             rm -f $PIDFILE
-            exit $USERABORTED
+            exit $E_INVALIDBKPFILE
         else
-            echo -e "${BLUE}rebuilding base directory ${GREEN}'${directory}'${COLOR_RESET}"
-            rm -rf $directory && mkdir $directory
-        fi
-    fi
-    # create patches directory
-    mkdir ${directory}/patches
-    # echo today's date in unix timestamp (no seconds)
-    touch ${directory}/lastupdate && echo $(date -d $(date +"%Y-%m-%d") +%s) > ${directory}/lastupdate
-    # let's get salty! we'll need those keys in a minute
-    echo -e "${BLUE}Downloading secret-keys from WordPress.org API${COLOR_RESET}"
-    wget -O ${TMPDIR}/wp.keys https://api.wordpress.org/secret-key/1.1/salt/
-    echo -e "${BLUE}Downloading WordPress from svn${COLOR_RESET}"
-    ${SVN} co ${WORDPRESS} ${directory}/WP
-    echo -e "${BLUE}creating base wp-config.php${COLOR_RESET}"
-    cp ${directory}/WP/wp-config-sample.php ${TMPDIR}/wp-config.php
-    # substitute username and password with our settings
-    sed -i "s/username_here/${DBUSER}/" ${TMPDIR}/wp-config.php
-    sed -i "s/password_here/${DBPASS}/" ${TMPDIR}/wp-config.php
-    # copy the secret keys into our file
-    sed -i "/#@-/r ${TMPDIR}/wp.keys" ${TMPDIR}/wp-config.php
-    sed -i "/#@+/,/#@-/d" ${TMPDIR}/wp-config.php
-    # activate WP_DEBUG and SAVEQUERIES
-    sed -i "s/false)/true)/" ${TMPDIR}/wp-config.php
-    sed -i "/define('WP_DEBUG'/ a define( 'SAVEQUERIES', true );" ${TMPDIR}/wp-config.php
-    # put the wp-config.php file back in its place
-    cp ${TMPDIR}/wp-config.php ${directory}/wp-config.php
-    # download every plugin we need from svn inside PLUGINS directory
-    echo -e "${BLUE}Downloading plugins${COLOR_RESET}"
-    [ ! -d ${directory} ] && mkdir ${directory}/PLUGINS
-    for plugin in "${WP_PLUGINS[@]}"; do
-        echo -e "${BLUE}Downloading ${GREEN}${plugin}${COLOR_RESET}"
-        ${SVN} co ${WPPLUGIN}/${plugin}/trunk ${directory}/PLUGINS/${plugin}
-    done
-    echo -e "\n${GREEN}All base files have been installed successfully. Existing.${COLOR_RESET}"
-}
-
-#------------------------------------------------------------------------------
-#                           ### Update base files ###
-#------------------------------------------------------------------------------
-# USAGE: $0 -b
-base_update() {
-    directory=$(dirname ${WEBSERVER})/${BASEDIR}
-    # test last update - ideally this options needs to run once a day
-    if [ -r ${directory}/lastupdate ]; then
-        lastup=$(cat ${directory}/lastupdate)
-        today=$(date -d $(date +"%Y-%m-%d") +%s)
-        if [ $today -eq $lastup ]; then
-            echo -e "${YELLOW}It appears that you updated less than 1 day ago.${BLUE}\n"
-            read -p "do you really wish to continue the update? [y/n] " -n 1 -r; echo -e ${COLOR_RESET}
-            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            site_name=$(echo $(basename ${to_restore}) |sed 's/^\([a-zA-Z0-9]*\)-[0-9]*\.tar\.xz/\1/')
+            check_installed $site_name
+            if [ $? -ne 150 ]; then
+                # $site_name doesn't exists. nothing to backup
+                echo "${site_name} doesn't exists. I can't restore it."
+                echo "You may want to install it first and the run the restore routine again. Exiting now."
                 [ $CLEANUP == "yes" ] && [ -d $TMPDIR ] && rm -rf $TMPDIR
                 rm -f $PIDFILE
-                exit $USERABORTED
+                exit $E_BKPSITENOTEXISTS
             fi
+            cd ${TMPDIR}
+            tar Jxvf ${to_restore}
+            restore_dir=$(basename ${to_restore})
+            echo -e "${BLUE}Restoring files inside '${WEBSERVER}/${site_name}'${COLOR_RESET}"
+            if [ -d ${WEBSERVER}/${site_name} ];then
+                rm -rf ${WEBSERVER}/${site_name}/*
+                cp -vr ${restore_dir%%.*}/WP/* ${WEBSERVER}/${site_name}/
+            else
+                cp -vr ${restore_dir%%.*}/WP/* ${WEBSERVER}/${site_name}/
+            fi
+
+            # we check first for a VHOSTCONFDIR, and if we haven't set one we try other methods
+            echo -e "${BLUE}Restoring VirtualHost entry for '${site_name}'${COLOR_RESET}"
+            if [ $VHOSTCONFDIR ]; then
+                # put the backup back in it's place
+                cp -v ${restore_dir%%.*}/wpm_${site_name}.conf ${VHOSTCONFDIR}/
+            # no VHOSTCONFDIR, let's check for a vhost-conf file. If we have it we can proceed
+            elif [ $VHOSTCONF ]; then
+                cat ${restore_dir%%.*}/$(basename ${VHOSTCONF}) >> ${VHOSTCONF}
+            fi
+            # TODO: implement backup routine based on httpd.conf file
+
+            echo -e "${BLUE}Restoring database '${site_name}'${COLOR_RESET}"
+            mysql ${site_name} < ${restore_dir%%.*}/${site_name}.sql
         fi
     fi
-    echo -e "${BLUE}Updating base files inside ${GREEN}'${directory}'"
-    echo -e "${BLUE}Creating patch files inside ${GREEN}'${directory}/patches/'${COLOR_RESET}"
-    [ -d ${directory}/patches ] && rm ${directory}/patches/*
-    # now we have a clean old copy of WordPress
-    ${SVN} export ${directory}/WP ${TMPDIR}/WP.old
-    # and a clean new copy here
-    ${SVN} up ${directory}/WP
-    ${SVN} export ${directory}/WP ${TMPDIR}/WP.new
-    # let's create some patch files containing the name of all the modified files 
-    # between the two versions of WP
-
-# Find files existing only in one of the two versions, either new or old
-#   diff -qr WP.old WP.new/ |grep Only | sed -e 's/Only in //' -e 's/: /\//'
-    cd $TMPDIR
-    # Get those files that needs to be deleted with: 
-    diff -qr WP.old WP.new/ |grep Only |grep -e old | sed -e 's/Only in //' -e 's/: /\//' > ${directory}/patches/wp-delete.txt
-    # And files that need to be added with:
-    diff -qr WP.old WP.new/ |grep Only |grep -e new | sed -e 's/Only in //' -e 's/: /\//' >> wp-add-update.txt
-    # And finally we can get those files that need to be updated with:
-    diff -qr WP.old WP.new/ | cut -d " " -f 4 |grep WP. >> wp-add-update.txt
-    sed 's/WP.new\///' < wp-add-update.txt > wp-patch.txt
-    mkdir -p ${directory}/patches/wp-add
-    mods=$(cat ${TMPDIR}/wp-patch.txt)
-    cd WP.new
-    for i in $mods;do
-        cp --parents $i ${directory}/patches/wp-add/
-    done
-    cd $PWD
-
-    echo -e "${BLUE}Updating plugins${COLOR_RESET}"
-    for plugin_dir in $(/bin/ls ${directory}/PLUGINS); do
-        echo -e "${BLUE}Updating ${GREEN}${plugin_dir}${COLOR_RESET}"
-        ${SVN} up ${directory}/PLUGINS/${plugin_dir}
-    done
-    echo $(date -d $(date +"%Y-%m-%d") +%s) > ${directory}/lastupdate
-    echo -e "\n${GREEN}All base files have been updated successfully. Existing.${COLOR_RESET}"
+    echo -e "${GREEN}'${site_name}' has been restored successfully.${COLOR_RESET}"
 }
-
 #------------------------------------------------------------------------------
 #                           ### Delete selected VHost ###
 #------------------------------------------------------------------------------

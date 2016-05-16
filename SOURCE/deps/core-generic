@@ -24,7 +24,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
     echo -e "\n$(basename $0) is a bash script to install and manage WordPress VHosts in a LAMP environment\n"
     echo "USAGE: `basename $0 ` [OPTION] [vhostname]"
     echo -e "\nOptions:"
-    echo -e "-h, --help\t\t\tshow this the help and exits."
+    echo -e "-h, --help\t\t\t\tshow this the help and exits."
     echo -e "-w, --write-config\t\t\tGenerate a config file for this script."
     echo -e "-t, --test-config\t\t\tcheck the config and display a brief summary."
     echo -e "-s, --base-setup\t\t\tSetup the local cache, downloads WordPress and the basic plugins."
@@ -34,7 +34,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
     echo -e "-d, --delete <SITE NAME>\t\tDeletes the VHost 'SITE NAME' and all of its data"
     echo -e "-u, --update\t\t\t\tUpdates all VHosts created by this script."
     echo -e "-k, --backup <SITE NAME>\t\tCreates a backup of the VHost 'SITE NAME'."
-    echo -e "-r, --restore-backup <BACKUP FILE>\t\tRestores a previous backup using 'BACKUP FILE'."
+    echo -e "-r, --restore-backup <BACKUP FILE>\tRestores a previous backup using 'BACKUP FILE'."
 }
 
 #------------------------------------------------------------------------------
