@@ -1,7 +1,7 @@
 wp_manager 0.9.1
 ====================================
 
-This is a bash script to install and manage WordPress VHosts in a LAMP environment
+This is a bash script to install and manage WordPress VHosts in a LAMP environment.
 
 
 Description
