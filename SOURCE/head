@@ -1,6 +1,6 @@
 #! /bin/bash
 
-VERSION="0.9"
+VERSION="0.9.1"
 AUTHOR="Danilo 'danix' Macri <danix@danixland.net>"
 
 #------------------------------------------------------------------------------

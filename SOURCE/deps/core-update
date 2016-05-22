@@ -6,10 +6,18 @@ update() {
     directory=$(dirname ${WEBSERVER})/${BASEDIR}
     VHOSTS=$(echo ${VHOSTLIST})
     if [ -n "$VHOSTS" ]; then
+        # let's update the core WP files
         ${SVN} export ${directory}/WP ${TMPDIR}/WP
         for site in $VHOSTS; do
             echo -e "${BLUE}Updating WordPress install on ${GREEN}${WEBSERVER}/$site${COLOR_RESET}"
             $RSYNC -rtvzi $RSYNCOPTS ${TMPDIR}/WP/ ${WEBSERVER}/${site}/
+        done
+        # and now the plugins
+        mkdir ${TMPDIR}/PLUGINS
+        echo -e "${BLUE}Updating WordPress plugins on ${GREEN}${WEBSERVER}/$site${COLOR_RESET}"
+        for plugin_dir in $(/bin/ls ${directory}/PLUGINS); do
+            ${SVN} export ${directory}/PLUGINS/${plugin_dir} ${TMPDIR}/PLUGINS/${plugin_dir}
+            $RSYNC -rtvzi ${TMPDIR}/PLUGINS/${plugin_dir}/ ${WEBSERVER}/${site}/wp-content/plugins/${plugin_dir}/
         done
     else
         echo -e "${YELLOW}no VHosts to update, Exiting.${COLOR_RESET}"
