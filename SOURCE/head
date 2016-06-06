@@ -1,6 +1,6 @@
 #! /bin/bash
 
-VERSION="0.9.1"
+VERSION="0.9.2"
 AUTHOR="Danilo 'danix' Macri <danix@danixland.net>"
 
 #------------------------------------------------------------------------------
@@ -132,8 +132,8 @@ WP_PLUGINS=${WP_PLUGINS:-(
 
 # Options used by rsync during VHosts upgrade, useful if you want to 
 # exclude or include specific directories. Our rsync command already uses
-# the options -rtvz during upgrade.
-RSYNCOPTS=${RSYNCOPTS:-"--exclude wp-content"}
+# the options "-rtvzi --delete" during upgrade.
+RSYNCOPTS=${RSYNCOPTS:-"--exclude 'wp-content' --exclude 'wp-config.php'"}
 
 } # end set_defaults, do not change this line.
 

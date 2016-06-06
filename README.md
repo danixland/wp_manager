@@ -171,14 +171,14 @@ Comments
 
 If you have any ideas you can comment here or you can join the discussion on the [WordPress forums](https://wordpress.org/support/topic/lamp-automated-wordpress-local-environment-suggestions). For my italian speaking friends who are interested I have a discussion going on on [the slacky.eu forum](http://slacky.eu/forum/viewtopic.php?f=20&t=38699) and you're more than welcome to join us.
 
-License
--------
 
-This code is licensed under the GPL Version 2 license. See the complete license in the root of this repository:
+
 
     LICENSE
-
+-------
+License
 Reporting an issue or a feature request
+This code is licensed under the GPL Version 2 license. See the complete license in the root of this repository:
 ---------------------------------------
 
 Issues and feature requests are tracked in the [Github issue tracker](https://github.com/danixland/wp_manager/issues).

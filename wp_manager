@@ -1,6 +1,6 @@
 #! /bin/bash
 
-VERSION="0.9.1"
+VERSION="0.9.2"
 AUTHOR="Danilo 'danix' Macri <danix@danixland.net>"
 
 #------------------------------------------------------------------------------
@@ -369,16 +369,18 @@ update() {
     if [ -n "$VHOSTS" ]; then
         # let's update the core WP files
         ${SVN} export ${directory}/WP ${TMPDIR}/WP
-        for site in $VHOSTS; do
-            echo -e "${BLUE}Updating WordPress install on ${GREEN}${WEBSERVER}/$site${COLOR_RESET}"
-            $RSYNC -rtvzi $RSYNCOPTS ${TMPDIR}/WP/ ${WEBSERVER}/${site}/
-        done
         # and now the plugins
         mkdir ${TMPDIR}/PLUGINS
         echo -e "${BLUE}Updating WordPress plugins on ${GREEN}${WEBSERVER}/$site${COLOR_RESET}"
         for plugin_dir in $(/bin/ls ${directory}/PLUGINS); do
             ${SVN} export ${directory}/PLUGINS/${plugin_dir} ${TMPDIR}/PLUGINS/${plugin_dir}
-            $RSYNC -rtvzi ${TMPDIR}/PLUGINS/${plugin_dir}/ ${WEBSERVER}/${site}/wp-content/plugins/${plugin_dir}/
+        done
+        for site in $VHOSTS; do
+            echo -e "${BLUE}Updating WordPress install on ${GREEN}${WEBSERVER}/$site${COLOR_RESET}"
+            $RSYNC -rtvzi --delete $RSYNCOPTS ${TMPDIR}/WP/ ${WEBSERVER}/${site}/
+            for plugin_dir in $(/bin/ls ${directory}/PLUGINS); do
+                $RSYNC -rtvzi --delete ${TMPDIR}/PLUGINS/${plugin_dir}/ ${WEBSERVER}/${site}/wp-content/plugins/${plugin_dir}/
+            done
         done
     else
         echo -e "${YELLOW}no VHosts to update, Exiting.${COLOR_RESET}"
