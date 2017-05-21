@@ -174,11 +174,13 @@ If you have any ideas you can comment here or you can join the discussion on the
 
 
 
-    LICENSE
+LICENSE
 -------
-License
-Reporting an issue or a feature request
+
 This code is licensed under the GPL Version 2 license. See the complete license in the root of this repository:
+
+
+issues & feature requests
 ---------------------------------------
 
 Issues and feature requests are tracked in the [Github issue tracker](https://github.com/danixland/wp_manager/issues).
