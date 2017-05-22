@@ -27,7 +27,7 @@ else
     # Parse the commandline options:
     if (( $# == 0 )); then
         usage
-        rm -f $PIDFILE; exit $HELPDISPLAY
+        rm -f $PIDFILE; exit $E_NOARGS
     else
         while [ $# -gt 0 ]; do
             case $1 in
